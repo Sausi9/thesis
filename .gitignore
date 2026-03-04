@@ -28,3 +28,19 @@
 
 # Latexmk directories
 _minted*/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Sandbox ML artifacts and datasets
+code/sandbox/data/
+code/sandbox/runs/
+code/sandbox/checkpoints/
