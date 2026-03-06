@@ -60,7 +60,7 @@ def main():
     beta_start = float(diff_cfg["beta_start"])
     beta_end = float(diff_cfg["beta_end"])
     betas = torch.linspace(beta_start, beta_end, T)
-    diffusion = Diffusion(betas=betas.tolist(), T=T)
+    diffusion = Diffusion(betas=betas, T=T)
 
     train_loader, _ = get_data()
 
