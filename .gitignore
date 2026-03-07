@@ -44,3 +44,4 @@ venv/
 code/sandbox/data/
 code/sandbox/runs/
 code/sandbox/checkpoints/
+code/sandbox/artifacts/
