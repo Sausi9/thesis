@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 import yaml
+from tqdm.auto import tqdm
 from torchvision.utils import make_grid, save_image
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
@@ -55,7 +56,8 @@ def main():
     config = load_config(project_root / "configs" / "eval.yaml")
     eval_cfg = config["eval"]
 
-    device = resolve_device(config.get("device", "auto"))
+    sampling_device = resolve_device(config.get("sampling_device", config.get("device", "auto")))
+    metrics_device = resolve_device(config.get("metrics_device", "cpu"))
     artifact_dir = project_root / "artifacts" / "models"
 
     artifact_name = config.get("artifact_name")
@@ -64,7 +66,7 @@ def main():
     else:
         artifact_path = find_default_artifact(artifact_dir)
 
-    checkpoint = torch.load(artifact_path, map_location=device)
+    checkpoint = torch.load(artifact_path, map_location=sampling_device)
     model_cfg = checkpoint["model_config"]
     diffusion_cfg = checkpoint["diffusion_config"]
 
@@ -77,7 +79,7 @@ def main():
         attn_resolutions=tuple(model_cfg["attn_resolutions"]),
         dropout=float(model_cfg["dropout"]),
         resamp_with_conv=bool(model_cfg["resamp_with_conv"]),
-    ).to(device)
+    ).to(sampling_device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -99,12 +101,13 @@ def main():
     preview_nrow = int(eval_cfg.get("preview_nrow", 8))
     use_timestamp = bool(eval_cfg.get("use_timestamp", True))
 
-    fid = FrechetInceptionDistance(feature=2048, normalize=False).to(device) if compute_fid else None
-    kid = KernelInceptionDistance(subset_size=1000, normalize=False).to(device) if compute_kid else None
-    inception_score = InceptionScore(normalize=False).to(device) if compute_inception_score else None
+    fid = FrechetInceptionDistance(feature=2048, normalize=False).to(metrics_device) if compute_fid else None
+    kid = KernelInceptionDistance(subset_size=1000, normalize=False).to(metrics_device) if compute_kid else None
+    inception_score = InceptionScore(normalize=False).to(metrics_device) if compute_inception_score else None
 
-    for x_real, _ in test_loader:
-        x_real = to_uint8_three_channel(x_real.to(device))
+    real_data_pbar = tqdm(test_loader, desc="Updating metrics with real data", leave=True)
+    for x_real, _ in real_data_pbar:
+        x_real = to_uint8_three_channel(x_real.to(metrics_device))
         if fid is not None:
             fid.update(x_real, real=True)
         if kid is not None:
@@ -112,13 +115,14 @@ def main():
 
     preview_samples = None
     generated = 0
+    eval_pbar = tqdm(total=num_test_set, desc="Generating and scoring samples", unit="img", leave=True)
     with torch.no_grad():
         while generated < num_test_set:
             current_batch = min(batch_size, num_test_set - generated)
-            x_fake = diffusion.sample(model, num_samples=current_batch, device=device)
+            x_fake = diffusion.sample(model, num_samples=current_batch, device=sampling_device)
             if preview_samples is None:
                 preview_samples = x_fake[:preview_num_samples].detach().cpu()
-            x_fake = to_uint8_three_channel(x_fake)
+            x_fake = to_uint8_three_channel(x_fake).to(metrics_device)
 
             if fid is not None:
                 fid.update(x_fake, real=False)
@@ -128,9 +132,14 @@ def main():
                 inception_score.update(x_fake)
 
             generated += current_batch
+            eval_pbar.update(current_batch)
+            eval_pbar.set_postfix(generated=f"{generated}/{num_test_set}")
+    eval_pbar.close()
 
     results = {
         "artifact_name": artifact_path.name,
+        "sampling_device": sampling_device,
+        "metrics_device": metrics_device,
         "num_real_samples": int(num_test_set),
         "num_fake_samples": int(num_test_set),
     }
