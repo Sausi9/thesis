@@ -5,7 +5,8 @@ import torch
 import yaml
 from tqdm.auto import tqdm
 
-from src.data.datasets import get_data
+from src.data.datasets import get_mnist
+from src.data.datasets import get_cifar10
 from src.diffusion.process import Diffusion
 from src.models.unet import UNet
 
@@ -62,7 +63,7 @@ def main():
     betas = torch.linspace(beta_start, beta_end, T)
     diffusion = Diffusion(betas=betas, T=T)
 
-    train_loader, _ = get_data()
+    train_loader, _ = get_mnist()
 
     run_stem = str(config.get("run_name", "ddpm_mnist"))
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")

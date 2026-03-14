@@ -10,7 +10,7 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 from torchmetrics.image.kid import KernelInceptionDistance
 
-from src.data.datasets import get_data
+from src.data.datasets import get_mnist
 from src.diffusion.process import Diffusion
 from src.models.unet import UNet
 
@@ -89,7 +89,7 @@ def main():
     betas = torch.linspace(beta_start, beta_end, T)
     diffusion = Diffusion(betas=betas, T=T)
 
-    _, test_loader = get_data()
+    _, test_loader = get_mnist()
     num_test_set = len(test_loader.dataset)
 
     batch_size = int(eval_cfg.get("batch_size", 100))
