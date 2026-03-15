@@ -22,6 +22,7 @@ tmp_root="$scratch_root/tmp"
 
 mkdir -p "$cache_root" "$tmp_root" "$repo_root/jobs/logs"
 
+export PATH="$HOME/.local/bin:$PATH"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$cache_root/xdg}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$cache_root/uv}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$cache_root/matplotlib}"
