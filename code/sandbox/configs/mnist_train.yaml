@@ -16,8 +16,8 @@ diffusion:
   beta_end: 0.02
 
 train:
-  num_epochs: 5
+  num_epochs: 2000
   batch_size: 64
   test_batch_size: 1000
   learning_rate: 0.0001
-  checkpoint_every: 1
+  checkpoint_every: 500
