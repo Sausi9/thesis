@@ -37,4 +37,4 @@ echo "Dataset: $dataset"
 echo "Scratch root: $scratch_root"
 
 uv sync --frozen
-uv run python src/engine/train.py "$dataset"
+uv run python -m src.engine.train "$dataset"
