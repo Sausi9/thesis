@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -6,7 +7,9 @@ import yaml
 from PIL import Image
 from torchvision.utils import make_grid, save_image
 
+from src.data.datasets import DATASET_SPECS
 from src.diffusion.process import Diffusion
+from src.engine.artifacts import resolve_artifact_path
 from src.models.unet import UNet
 
 
@@ -28,32 +31,40 @@ def resolve_device(device_name: str) -> str:
     return "cpu"
 
 
-def find_default_artifact(artifact_dir: Path) -> Path:
-    best_files = sorted(artifact_dir.glob("*_best.pt"), key=lambda p: p.stat().st_mtime)
-    if best_files:
-        return best_files[-1]
-    final_files = sorted(artifact_dir.glob("*_final.pt"), key=lambda p: p.stat().st_mtime)
-    if final_files:
-        return final_files[-1]
-    raise FileNotFoundError(f"No model artifacts found in {artifact_dir}.")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Sample images from a trained DDPM model.")
+    parser.add_argument(
+        "dataset",
+        choices=tuple(sorted(DATASET_SPECS)),
+        help="Dataset family to sample from.",
+    )
+    return parser.parse_args()
 
 
 def main():
+    args = parse_args()
     project_root = Path(__file__).resolve().parents[2]
     config = load_config(project_root / "configs" / "sample.yaml")
 
+    dataset_name = args.dataset.lower()
+    dataset_spec = DATASET_SPECS[dataset_name]
     device = resolve_device(config.get("device", "auto"))
     artifact_dir = project_root / "artifacts" / "models"
 
     artifact_name = config.get("artifact_name")
-    if artifact_name:
-        artifact_path = artifact_dir / artifact_name
-    else:
-        artifact_path = find_default_artifact(artifact_dir)
+    artifact_path = resolve_artifact_path(
+        artifact_dir=artifact_dir,
+        dataset_name=dataset_name,
+        artifact_name=artifact_name,
+    )
 
     checkpoint = torch.load(artifact_path, map_location=device)
     model_cfg = checkpoint["model_config"]
     diffusion_cfg = checkpoint["diffusion_config"]
+    if int(model_cfg["in_channels"]) != int(dataset_spec["channels"]):
+        raise ValueError(
+            f"Artifact '{artifact_path.name}' does not match dataset '{dataset_name}'."
+        )
 
     model = UNet(
         in_channels=int(model_cfg["in_channels"]),
@@ -79,9 +90,19 @@ def main():
     output_name = str(config["sampling"].get("output_name", "latest.png"))
     use_timestamp = bool(config["sampling"].get("use_timestamp", False))
     show_samples = bool(config["sampling"].get("show", True))
+    sample_shape = (
+        dataset_spec["channels"],
+        dataset_spec["image_size"],
+        dataset_spec["image_size"],
+    )
 
     with torch.no_grad():
-        samples = diffusion.sample(model, num_samples=num_samples, device=device)
+        samples = diffusion.sample(
+            model,
+            num_samples=num_samples,
+            device=device,
+            sample_shape=sample_shape,
+        )
 
     samples = (samples.clamp(-1, 1) + 1) / 2
 

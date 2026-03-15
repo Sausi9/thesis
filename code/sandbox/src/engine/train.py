@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -5,8 +6,7 @@ import torch
 import yaml
 from tqdm.auto import tqdm
 
-from src.data.datasets import get_mnist
-from src.data.datasets import get_cifar10
+from src.data.datasets import get_dataset
 from src.diffusion.process import Diffusion
 from src.models.unet import UNet
 
@@ -29,15 +29,40 @@ def resolve_device(device_name: str) -> str:
     return "cpu"
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the DDPM model.")
+    parser.add_argument(
+        "dataset",
+        choices=("mnist", "cifar"),
+        help="Dataset to train on.",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     project_root = Path(__file__).resolve().parents[2]
-    config = load_config(project_root / "configs" / "train.yaml")
+    dataset_name = args.dataset.lower()
+    dataset_config = dataset_name + "_train.yaml"
+    config = load_config(project_root / "configs" / dataset_config)
+    train_cfg = config["train"]
+    train_batch_size = int(train_cfg["batch_size"])
+    test_batch_size = int(
+        train_cfg.get("test_batch_size", train_cfg.get("eval_batch_size", train_batch_size))
+    )
+    train_loader, _, dataset_spec = get_dataset(
+        dataset_name,
+        train_batch_size=train_batch_size,
+        test_batch_size=test_batch_size,
+    )
 
     device = resolve_device(config.get("device", "auto"))
     seed = int(config.get("seed", 42))
     torch.manual_seed(seed)
 
-    model_cfg = config["model"]
+    model_cfg = dict(config["model"])
+    model_cfg["in_channels"] = dataset_spec["channels"]
+    model_cfg["out_channels"] = dataset_spec["channels"]
     model = UNet(
         in_channels=int(model_cfg["in_channels"]),
         out_channels=int(model_cfg["out_channels"]),
@@ -50,7 +75,6 @@ def main():
     ).to(device)
     model.train()
 
-    train_cfg = config["train"]
     learning_rate = float(train_cfg["learning_rate"])
     num_epochs = int(train_cfg["num_epochs"])
     checkpoint_every = int(train_cfg.get("checkpoint_every", 0))
@@ -63,15 +87,15 @@ def main():
     betas = torch.linspace(beta_start, beta_end, T)
     diffusion = Diffusion(betas=betas, T=T)
 
-    train_loader, _ = get_mnist()
-
-    run_stem = str(config.get("run_name", "ddpm_mnist"))
+    run_stem = str(config.get("run_name") or dataset_spec["default_run_name"])
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"{run_stem}_{run_id}"
     checkpoint_dir = project_root / "checkpoints" / run_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     artifact_dir = project_root / "artifacts" / "models"
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    config["dataset"] = dataset_name
+    config["model"] = model_cfg
     with (checkpoint_dir / "config_used.yaml").open("w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False)
 
@@ -95,7 +119,9 @@ def main():
             num_steps += 1
             global_step += 1
 
-            pbar.set_postfix(step_loss=f"{loss_val:.4f}", epoch_avg=f"{epoch_loss / num_steps:.4f}")
+            pbar.set_postfix(
+                step_loss=f"{loss_val:.4f}", epoch_avg=f"{epoch_loss / num_steps:.4f}"
+            )
 
         epoch_avg = epoch_loss / num_steps
         print(f"Epoch {epoch + 1}: avg_loss={epoch_avg:.4f}")
@@ -116,8 +142,7 @@ def main():
         if epoch_avg < best_loss:
             best_loss = epoch_avg
             best_model_state = {
-                k: v.detach().cpu().clone()
-                for k, v in model.state_dict().items()
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
             torch.save(checkpoint, checkpoint_dir / "best.pt")
 
@@ -127,8 +152,7 @@ def main():
     final_model_artifact = {
         "run_name": run_name,
         "model_state_dict": {
-            k: v.detach().cpu()
-            for k, v in model.state_dict().items()
+            k: v.detach().cpu() for k, v in model.state_dict().items()
         },
         "model_config": model_cfg,
         "diffusion_config": diff_cfg,

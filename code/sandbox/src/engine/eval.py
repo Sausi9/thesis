@@ -1,3 +1,4 @@
+import argparse
 import json
 from datetime import datetime
 from pathlib import Path
@@ -10,8 +11,9 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 from torchmetrics.image.kid import KernelInceptionDistance
 
-from src.data.datasets import get_mnist
+from src.data.datasets import DATASET_SPECS, get_dataset
 from src.diffusion.process import Diffusion
+from src.engine.artifacts import resolve_artifact_path
 from src.models.unet import UNet
 
 
@@ -33,14 +35,14 @@ def resolve_device(device_name: str) -> str:
     return "cpu"
 
 
-def find_default_artifact(artifact_dir: Path) -> Path:
-    best_files = sorted(artifact_dir.glob("*_best.pt"), key=lambda p: p.stat().st_mtime)
-    if best_files:
-        return best_files[-1]
-    final_files = sorted(artifact_dir.glob("*_final.pt"), key=lambda p: p.stat().st_mtime)
-    if final_files:
-        return final_files[-1]
-    raise FileNotFoundError(f"No model artifacts found in {artifact_dir}.")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Evaluate a trained DDPM model.")
+    parser.add_argument(
+        "dataset",
+        choices=tuple(sorted(DATASET_SPECS)),
+        help="Dataset family to evaluate against.",
+    )
+    return parser.parse_args()
 
 
 def to_uint8_three_channel(x: torch.Tensor) -> torch.Tensor:
@@ -52,23 +54,33 @@ def to_uint8_three_channel(x: torch.Tensor) -> torch.Tensor:
 
 
 def main():
+    args = parse_args()
     project_root = Path(__file__).resolve().parents[2]
     config = load_config(project_root / "configs" / "eval.yaml")
     eval_cfg = config["eval"]
+    dataset_name = args.dataset.lower()
+    dataset_spec = DATASET_SPECS[dataset_name]
 
-    sampling_device = resolve_device(config.get("sampling_device", config.get("device", "auto")))
+    sampling_device = resolve_device(
+        config.get("sampling_device", config.get("device", "auto"))
+    )
     metrics_device = resolve_device(config.get("metrics_device", "cpu"))
     artifact_dir = project_root / "artifacts" / "models"
 
     artifact_name = config.get("artifact_name")
-    if artifact_name:
-        artifact_path = artifact_dir / artifact_name
-    else:
-        artifact_path = find_default_artifact(artifact_dir)
+    artifact_path = resolve_artifact_path(
+        artifact_dir=artifact_dir,
+        dataset_name=dataset_name,
+        artifact_name=artifact_name,
+    )
 
     checkpoint = torch.load(artifact_path, map_location=sampling_device)
     model_cfg = checkpoint["model_config"]
     diffusion_cfg = checkpoint["diffusion_config"]
+    if int(model_cfg["in_channels"]) != int(dataset_spec["channels"]):
+        raise ValueError(
+            f"Artifact '{artifact_path.name}' does not match dataset '{dataset_name}'."
+        )
 
     model = UNet(
         in_channels=int(model_cfg["in_channels"]),
@@ -89,7 +101,7 @@ def main():
     betas = torch.linspace(beta_start, beta_end, T)
     diffusion = Diffusion(betas=betas, T=T)
 
-    _, test_loader = get_mnist()
+    _, test_loader, _ = get_dataset(dataset_name)
     num_test_set = len(test_loader.dataset)
 
     batch_size = int(eval_cfg.get("batch_size", 100))
@@ -100,12 +112,31 @@ def main():
     preview_num_samples = int(eval_cfg.get("preview_num_samples", 64))
     preview_nrow = int(eval_cfg.get("preview_nrow", 8))
     use_timestamp = bool(eval_cfg.get("use_timestamp", True))
+    sample_shape = (
+        dataset_spec["channels"],
+        dataset_spec["image_size"],
+        dataset_spec["image_size"],
+    )
 
-    fid = FrechetInceptionDistance(feature=2048, normalize=False).to(metrics_device) if compute_fid else None
-    kid = KernelInceptionDistance(subset_size=1000, normalize=False).to(metrics_device) if compute_kid else None
-    inception_score = InceptionScore(normalize=False).to(metrics_device) if compute_inception_score else None
+    fid = (
+        FrechetInceptionDistance(feature=2048, normalize=False).to(metrics_device)
+        if compute_fid
+        else None
+    )
+    kid = (
+        KernelInceptionDistance(subset_size=1000, normalize=False).to(metrics_device)
+        if compute_kid
+        else None
+    )
+    inception_score = (
+        InceptionScore(normalize=False).to(metrics_device)
+        if compute_inception_score
+        else None
+    )
 
-    real_data_pbar = tqdm(test_loader, desc="Updating metrics with real data", leave=True)
+    real_data_pbar = tqdm(
+        test_loader, desc="Updating metrics with real data", leave=True
+    )
     for x_real, _ in real_data_pbar:
         x_real = to_uint8_three_channel(x_real.to(metrics_device))
         if fid is not None:
@@ -115,11 +146,21 @@ def main():
 
     preview_samples = None
     generated = 0
-    eval_pbar = tqdm(total=num_test_set, desc="Generating and scoring samples", unit="img", leave=True)
+    eval_pbar = tqdm(
+        total=num_test_set,
+        desc="Generating and scoring samples",
+        unit="img",
+        leave=True,
+    )
     with torch.no_grad():
         while generated < num_test_set:
             current_batch = min(batch_size, num_test_set - generated)
-            x_fake = diffusion.sample(model, num_samples=current_batch, device=sampling_device)
+            x_fake = diffusion.sample(
+                model,
+                num_samples=current_batch,
+                device=sampling_device,
+                sample_shape=sample_shape,
+            )
             if preview_samples is None:
                 preview_samples = x_fake[:preview_num_samples].detach().cpu()
             x_fake = to_uint8_three_channel(x_fake).to(metrics_device)
