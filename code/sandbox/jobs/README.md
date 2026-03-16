@@ -26,6 +26,16 @@ bsub < jobs/train_cifar.bsub
 bsub < jobs/train_mnist.bsub
 ```
 
+To resume a training run, pass the checkpoint path as an environment variable when submitting:
+
+```bash
+RESUME_PATH=checkpoints/ddpm_cifar_<run_id>/latest.pt bsub < jobs/train_cifar.bsub
+```
+
+```bash
+RESUME_PATH=checkpoints/ddpm_mnist_<run_id>/latest.pt bsub < jobs/train_mnist.bsub
+```
+
 ## Eval
 
 ```bash

@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
         choices=("mnist", "cifar"),
         help="Dataset to train on.",
     )
+    parser.add_argument("--resume", type=str, default=None)
     return parser.parse_args()
 
 
@@ -48,7 +49,9 @@ def main():
     train_cfg = config["train"]
     train_batch_size = int(train_cfg["batch_size"])
     test_batch_size = int(
-        train_cfg.get("test_batch_size", train_cfg.get("eval_batch_size", train_batch_size))
+        train_cfg.get(
+            "test_batch_size", train_cfg.get("eval_batch_size", train_batch_size)
+        )
     )
     train_loader, _, dataset_spec = get_dataset(
         dataset_name,
@@ -87,23 +90,45 @@ def main():
     betas = torch.linspace(beta_start, beta_end, T)
     diffusion = Diffusion(betas=betas, T=T)
 
-    run_stem = str(config.get("run_name") or dataset_spec["default_run_name"])
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"{run_stem}_{run_id}"
-    checkpoint_dir = project_root / "checkpoints" / run_name
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
     artifact_dir = project_root / "artifacts" / "models"
     artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    best_loss = float("inf")
+    best_model_state = None
+    start_epoch = 0
+    global_step = 0
+
+    if args.resume is not None:
+        resume_path = Path(args.resume).resolve()
+        checkpoint_dir = resume_path.parent
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        run_name = checkpoint_dir.name
+
+        checkpoint = torch.load(resume_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["epoch"]
+        global_step = checkpoint["global_step"]
+        best_loss = checkpoint["metrics"]["best_loss"]
+
+        best_checkpoint = torch.load(checkpoint_dir / "best.pt", map_location="cpu")
+        best_model_state = {
+              k: v.detach().clone()
+              for k, v in best_checkpoint["model_state_dict"].items()
+          }
+    else:
+        run_stem = str(config.get("run_name") or dataset_spec["default_run_name"])
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"{run_stem}_{run_id}"
+        checkpoint_dir = project_root / "checkpoints" / run_name
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
     config["dataset"] = dataset_name
     config["model"] = model_cfg
     with (checkpoint_dir / "config_used.yaml").open("w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False)
 
-    best_loss = float("inf")
-    best_model_state = None
-    global_step = 0
-
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         epoch_loss = 0.0
         num_steps = 0
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=True)

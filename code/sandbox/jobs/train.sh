@@ -2,12 +2,21 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <mnist|cifar>" >&2
+if [ "$#" -ne 1 ] && [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <mnist|cifar> [--resume <checkpoint_path>]" >&2
     exit 1
 fi
 
 dataset="$1"
+resume_args=()
+if [ "$#" -eq 3 ]; then
+    if [ "$2" != "--resume" ]; then
+        echo "Usage: $0 <mnist|cifar> [--resume <checkpoint_path>]" >&2
+        exit 1
+    fi
+    resume_args=(--resume "$3")
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "/work3/$USER" ]; then
     default_scratch_base="/work3/$USER"
@@ -35,6 +44,9 @@ echo "Repository: $repo_root"
 echo "Commit: $(git rev-parse HEAD)"
 echo "Dataset: $dataset"
 echo "Scratch root: $scratch_root"
+if [ "${#resume_args[@]}" -gt 0 ]; then
+    echo "Resume checkpoint: ${resume_args[1]}"
+fi
 
 uv sync --frozen
-uv run python -m src.engine.train "$dataset"
+uv run python -m src.engine.train "$dataset" "${resume_args[@]}"

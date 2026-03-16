@@ -62,11 +62,11 @@ def get_cifar10(train_batch_size: int = 64, test_batch_size: int = 64):
     )
 
     train_loader = torch.utils.data.DataLoader(
-        cifar_train, batch_size=train_batch_size, shuffle=True, num_workers=2
+        cifar_train, batch_size=train_batch_size, shuffle=True, num_workers=2, persistent_workers=True
     )
 
     test_loader = torch.utils.data.DataLoader(
-        cifar_test, batch_size=test_batch_size, shuffle=False, num_workers=2
+        cifar_test, batch_size=test_batch_size, shuffle=False, num_workers=2, persistent_workers=True
     )
     return train_loader, test_loader
 

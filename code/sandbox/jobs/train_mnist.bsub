@@ -15,4 +15,8 @@
 set -euo pipefail
 
 cd "$LS_SUBCWD"
-bash jobs/train.sh mnist
+if [ -n "${RESUME_PATH:-}" ]; then
+    bash jobs/train.sh mnist --resume "$RESUME_PATH"
+else
+    bash jobs/train.sh mnist
+fi
