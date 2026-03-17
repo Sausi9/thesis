@@ -113,16 +113,16 @@ def main():
 
         best_checkpoint = torch.load(checkpoint_dir / "best.pt", map_location="cpu")
         best_model_state = {
-              k: v.detach().clone()
-              for k, v in best_checkpoint["model_state_dict"].items()
-          }
+            k: v.detach().clone()
+            for k, v in best_checkpoint["model_state_dict"].items()
+        }
     else:
         run_stem = str(config.get("run_name") or dataset_spec["default_run_name"])
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"{run_stem}_{run_id}"
         checkpoint_dir = project_root / "checkpoints" / run_name
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        
+
     config["dataset"] = dataset_name
     config["model"] = model_cfg
     with (checkpoint_dir / "config_used.yaml").open("w", encoding="utf-8") as f:

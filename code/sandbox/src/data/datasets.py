@@ -49,30 +49,48 @@ def get_mnist(train_batch_size: int = 64, test_batch_size: int = 1000):
 
 
 def get_cifar10(train_batch_size: int = 64, test_batch_size: int = 64):
-    transform = transforms.Compose(
+    transform_test = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     )
 
+    transform_train = transforms.Compose(
+        [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    )
+
     cifar_train = datasets.CIFAR10(
-        root=DATA_ROOT, train=True, download=True, transform=transform
+        root=DATA_ROOT, train=True, download=True, transform=transform_train
     )
 
     cifar_test = datasets.CIFAR10(
-        root=DATA_ROOT, train=False, download=True, transform=transform
+        root=DATA_ROOT, train=False, download=True, transform=transform_test
     )
 
     train_loader = torch.utils.data.DataLoader(
-        cifar_train, batch_size=train_batch_size, shuffle=True, num_workers=2, persistent_workers=True
+        cifar_train,
+        batch_size=train_batch_size,
+        shuffle=True,
+        num_workers=2,
+        persistent_workers=True,
     )
 
     test_loader = torch.utils.data.DataLoader(
-        cifar_test, batch_size=test_batch_size, shuffle=False, num_workers=2, persistent_workers=True
+        cifar_test,
+        batch_size=test_batch_size,
+        shuffle=False,
+        num_workers=2,
+        persistent_workers=True,
     )
     return train_loader, test_loader
 
 
 def get_dataset(
-    dataset_name: str, train_batch_size: int | None = None, test_batch_size: int | None = None
+    dataset_name: str,
+    train_batch_size: int | None = None,
+    test_batch_size: int | None = None,
 ):
     dataset_key = dataset_name.lower()
     try:
