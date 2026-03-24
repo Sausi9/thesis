@@ -1,0 +1,24 @@
+\chapter{Background} \label{sec:background}
+Diffusion models are probabilistic generative models that work by slowly corrupting the initial data into noise, and then learn to reverse this corrupted data to generate a clean sample.
+
+Two successful classes of diffusion models, Denoising diffusion probabilistic models (DDPM) \cite{ho2020denoisingdiffusionprobabilisticmodels} and Score matching with Langevin dynamics (SMLD) \cite{song2020generativemodelingestimatinggradients} are referred to as score-based generative models since they either directly estimate the score (SMLD), which is the gradient of the log probability density with respect to the data, or they implicitly estimate it. A breakthrough in diffusion modelling occurred when these two methods were unified and shown to be different discretizations of Stochastic Differential Equations (SDEs) \cite{song2021scorebasedgenerativemodelingstochastic}, a perspective that generalized these frameworks into a continuous-time diffusion process.
+
+MAYBE TALK ABOUT DIFFUSION PROCESSES HERE? WHAT THE DEFINITION IS ETC (MARKOV CHAIN SATISFYING TWO PROPERTIES)
+
+ALSO MAYBE HAVE SUBSECTIONS TALKING ABOUT DDPM AND SMLD IN MORE DETAIL?
+
+Score-based generative modelling via SDEs uses an infinite number of noise scales to perturb the data such that it evolves according to an SDE. The diffusion process then becomes $\{\mathbf{x}(t)\}_{t=0}^T$, indexed by the continuous time variable $t \in [0, T]$ instead of being made up of a discrete, finite number of noise scales. This diffusion process is such that when $t$ is equal to $0$ it matches the training data distribution and when $t=T$ it matches some given prior distribution which is usually Gaussian noise with a fixed mean and variance.  The reverse process is then modelled by the reverse-time SDE of the forward process, (MAYBE OMIT THIS PART? ->) which is itself a diffusion process \cite{ANDERSON1982313}. The forward diffusion process can be formulated as the solution to an Itô SDE \cite{oksendal2010stochastic}.
+\begin{equation}
+	\text{d}\mathbf{x} = \mathbf{f}(\mathbf{x}, t)\text{d}t + g(t)\text{d}\mathbf{w}
+\end{equation}
+where $f(x,t) : \mathbb{R}^d \to \mathbb{R}^d$ is a vector valued function which is named the \textit{drift} coefficient of $\mathbf{x}(t)$, $g : \mathbb{R} \to \mathbb{R}$ is called the \textit{diffusion} coefficient of $\mathbf{x}(t)$ and $\mathbf{w}$ is the Wiener process. The solution is a continuous stochastic process that starts equal to the data distribution at $t = 0$ and ends as noise when $t = T$. At time step $t$ the process can be described by the probability density $p_t(\mathbf{x})$ and the transition from a previous state to the next can be described by the conditional density $p(\mathbf{x}(t) | \mathbf{x}(s))$ where $0 \leq s < t \leq T$.
+
+The reverse-process can be modelled by the reverse-time SDE:
+\begin{equation}
+	    \text{d}\mathbf{x} = [\mathbf{f}(\mathbf{x}, t) - g^2(t)\nabla_{\mathbf{x}}\log p_t(\mathbf{x})]\text{d}t + g(t)\text{d}\bar{\mathbf{w}}
+\end{equation}
+The solution to this SDE is then a stochastic process such that when simulated yields samples at $t=0$. The only obstacle is that the score, $\nabla_{\mathbf{x}}\log p_t(\mathbf{x})$, is generally intractable and thus has to be estimated somehow. Score-matching \cite{10.5555/1046920.1088696} allows for predicting the score by training a neural network. Once we have access to that sampling can be done by using a general SDE solver.
+
+
+
+

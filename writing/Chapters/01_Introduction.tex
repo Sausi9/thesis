@@ -1,26 +1,23 @@
 \chapter{Introduction}
-This template complies with the DTU Design Guide \url{https://www.designguide.dtu.dk/}. DTU holds all rights to the design programme including all copyrights. It is intended for two-sided printing. The \textbackslash \texttt{cleardoublepage} command can be used to ensure that new sections and the table of contents begins on a right hand page. The back page always ends as an odd page. 
+Diffusion models, inspired by non-equilibrium statistical physics \cite{sohldickstein2015deepunsupervisedlearningusing}, are a popular paradigm of generative machine learning models that are prominently used for many different generation tasks such as image, video and audio synthesis as well as for scientific research tasks like 3D molecular generation and protein folding. \cite{ho2020denoisingdiffusionprobabilisticmodels} \cite{rombach2022highresolutionimagesynthesislatent} \cite{ho2022videodiffusionmodels} \cite{kong2021diffwaveversatilediffusionmodel} \cite{xu2022geodiffgeometricdiffusionmodel} More recently they have also been adopted heavily in world simulations and physical modeling, which is used in areas such as robotics \cite{yang2023unisimneuralclosedloopsensor}.
 
-All document settings have been gathered in Setup/Settings.tex. These are global settings meaning the settings will affect the whole document. Defining the title for example will change the title on the front page, the copyright page and the footer. A watermark can be enabled or disabled in Setup/Premeable.tex. You can edit the watermark to display draft, review, approved, confidential or anything else. By default the watermark is printed on top of the contents of the document and has a transparent grey colour. 
+Training diffusion models means having them learn a distribution that matches the training data distribution as closely as possible. If the marginal distribution of the training data is somehow wrong, biased or doesn't reflect real world scenarios accurately then the generated samples of the trained model will reflect this in their output and give samples exhibiting this undesirable distribution. Even if the data distribution is fine there are still many situations where it is desirable to guide the generation process of the model, such as generating 50\% male and 50\% female images, or generating samples of particular colors.
 
-\section{This is a section}
-Every chapter is numbered and the sections inherit the chapter number followed by a dot and a section number. Figures, equations, tables, ect. also inherit the chapter numbering. 
+Many different methods exist that allow for controlling the generation process. Incorporating the conditionin information into the training process \cite{dhariwal2021diffusionmodelsbeatgans} via classifier-guided diffusion or other similar conditional training approaches is one method but it requires training a task specific model along side large amounts of data, pairing the training data along the conditioning information. More flexible methods exist that allow for conditional sampling by directly working on the unconditional model. Twisted Diffusion Sampling \cite{wu2024practicalasymptoticallyexactconditional} and Feynman-Kac steering \cite{singhal2025a} are recent examples of approaches that do not require task-specific training and allow for flexible control of the sampling process. Normally, TDS is done when the generation is conditioned on a fixed, single observation $y$, where $y$ is defined through the likelyhood $p(y|x)$ \cite{wu2024practicalasymptoticallyexactconditional}, but combining it with a specific method for updating probability distributions, namely Jeffrey's rule, allows for steering toward a distribution instead. Feynman-Kac steering uses an arbitrary reward function to control the generation which naturally allows for steering toward a desired distribution.
 
-\subsection{This is a sub section}
-Sub sections are also numbered. In general try not to use a deep hierarchy of sub sections (\texttt{\textbackslash paragraph\{\}} and the like). The document will become segmented which will make the document appear less coherent. 
+Jeffrey's rule of conditioning is a generic way to update probability distributions in order to satisfy some given constraint. More specifically it says that the standard joint distribution
+\begin{align*}
+    p(z_I, z_J) = p(z_I | z_J)p(z_J)
+\end{align*}
+Can simply be rewritten as:
+\begin{align*}
+    p^*(z_I, z_J) = p(z_I | z_J)p^*(z_J)
+\end{align*}
+Where $p^*(z_J)$ is an adjusted marginal distribution of a subset of the features which had an undesirable marginal to begin with. This construction then leads to the formulation:
+\begin{align*}
+    p^*(z_I, z_J) = \frac{p^*(z_J)}{p(z_J)}p(z_I,z_J)
+\end{align*}
+Which says that the new joint distribution is an importance-weighted version of the original $p$. 
+Combining Jeffrey's conditioning with the above mentioned methods for steering the sampling it is possible to condition the sampling process on an arbitrary distribution. (CHECK? IS IT TRUE? FOR ANY ARBTRIARY DISTRIBUTION?)
 
-\subsubsection{This is a sub sub section}
-And those are not numbered. It is possible to adjust how deep hierarchy of numbering sections goes in Setup/Settings.tex. 
-
-The front and back cover have been made to replicate the examples in the design guide \url{https://www.designguide.dtu.dk/#stnd-printmedia}. The name of department heading is omitted  because it is located in the top right corner (no need to write it twice). Take a look at \url{https://www.inside.dtu.dk/en/medarbejder/om-dtu-campus-og-bygninger/kommunikation-og-design/skabeloner/rapporter} if you want to make your cover separately. 
-
-Citing is done with the \texttt{biblatex} package \cite{biblatex}. Cross referencing (figures, tables, ect.) is taken care by the \texttt{cleveref} package. Just insert the name of the label in \textbackslash \texttt{cref\{\}} and it will automatically format the cross reference. For example writing the \texttt{cleveref} command \textbackslash \texttt{cref\{fig:groupedcolumn\}} will output ``\cref{fig:groupedcolumn}''. Using \textbackslash \texttt{Cref\{\}} will capitalise the first letter and \textbackslash \texttt{crefrange\{\}\{\}} will make a reference range. An example: \Cref{fig:stackedbar} is an example of a stacked bar chart and \crefrange{fig:stackedcolumn}{fig:groupedcolumn} are three consecutive figures.
-
-\section{Font and symbols test}
-Symbols can be written directly in the document meaning there is no need for special commands to write special characters. I love to write special characters like æøå inside my \TeX{} document. Also á, à, ü, û, ë, ê, î, ï could be nice. So what about the ``¿'' character. What about ° é ® † ¥ ü | œ ‘ @ ö ä ¬ ‹ « © ƒ ß ª … ç ñ µ ‚ · ¡ “ £ ™ [ ] '. Some dashes - – —, and the latex form - -- --- 
-
-This is a font test \newline 
-Arial Regular \newline 
-\textit{Arial Italic} \newline 
-\textbf{Arial Bold} \newline 
-\textbf{\textit{Arial Bold Italic}}
+This thesis explores using Jeffrey's rule CITATION needed(Jeffrey PDF from Jes? OR perhaps dig deeper into the refernces listed on there.) in combination with the algorithms for conditioning the sampling process of a diffusion model in order to steer the generation towards a desired target distribution. These methods will be evaluated and compared in terms of their sampling efficiency, distributional fidelity, and ability to maintain sample diversity while adhering to external constraints. (DOUBLE CHECK LAST SENTENCE, WHAT TO COMPARE?)
