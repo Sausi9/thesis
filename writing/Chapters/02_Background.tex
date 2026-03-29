@@ -1,4 +1,6 @@
 \chapter{Background} \label{sec:background}
+This chapter gives the reader background into the theory that this thesis is based on. First, score-based diffusion models are explained via stochastic differential equations, which provides the core framework for the diffusion model implementation of the thesis. Secondly, the core workings of Jeffrey's rule of conditioning are layed down and how it can be used to modify a joint distribution to include a more desirable marginal. Finally, the essentials of some algorithms for doing distribution-guided generation are described.
+\section{SDE Diffusion Models}
 Diffusion models are probabilistic generative models that work by slowly corrupting the initial data into noise, and then learn to reverse this corrupted data to generate a clean sample.
 
 Two successful classes of diffusion models, Denoising diffusion probabilistic models (DDPM) \cite{ho2020denoisingdiffusionprobabilisticmodels} and Score matching with Langevin dynamics (SMLD) \cite{song2020generativemodelingestimatinggradients} are referred to as score-based generative models since they either directly estimate the score (SMLD), which is the gradient of the log probability density with respect to the data, or they implicitly estimate it. A breakthrough in diffusion modelling occurred when these two methods were unified and shown to be different discretizations of Stochastic Differential Equations (SDEs) \cite{song2021scorebasedgenerativemodelingstochastic}, a perspective that generalized these frameworks into a continuous-time diffusion process.
@@ -17,8 +19,14 @@ The reverse-process can be modelled by the reverse-time SDE:
 \begin{equation}
 	    \text{d}\mathbf{x} = [\mathbf{f}(\mathbf{x}, t) - g^2(t)\nabla_{\mathbf{x}}\log p_t(\mathbf{x})]\text{d}t + g(t)\text{d}\bar{\mathbf{w}}
 \end{equation}
-The solution to this SDE is then a stochastic process such that when simulated yields samples at $t=0$. The only obstacle is that the score, $\nabla_{\mathbf{x}}\log p_t(\mathbf{x})$, is generally intractable and thus has to be estimated somehow. Score-matching \cite{10.5555/1046920.1088696} allows for predicting the score by training a neural network. Once we have access to that sampling can be done by using a general SDE solver.
+The solution to this SDE is then a stochastic process such that when simulated yields samples at $t=0$. The only obstacle is that the score, $\nabla_{\mathbf{x}}\log p_t(\mathbf{x})$, is generally intractable and thus has to be estimated somehow. Score-matching \cite{10.5555/1046920.1088696} allows for predicting the score via a score-based model, $\mathbf{s}_{\theta}(\mathbf{x}, t)$, often a neural network which is trained via:
+\begin{equation}
+\boldsymbol{\theta}^* = \arg \min_{\boldsymbol{\theta}} \mathbb{E}_t \left\{ \lambda(t) \mathbb{E}_{\mathbf{x}(0)} \mathbb{E}_{\mathbf{x}(t) | \mathbf{x}(0)} \left[ \left\| \mathbf{s}_{\boldsymbol{\theta}}(\mathbf{x}(t), t) - \nabla_{\mathbf{x}(t)} \log p(\mathbf{x}(t) | \mathbf{x}(0)) \right\|_2^2 \right] \right\}
+\end{equation}
+Where $\lambda : [0,T] \to \mathbb{R}^+$ is positive weighting function and we sample $t$ uniformly from $[0,T]$. Note that for the score, the conditional density $p(x(t) | x(0))$ is used, instead of the marginal of $x(t)$, this is again because the marginal is generally hard to compute and a result from \cite{vincent} shows that the scores are equal for the two distributions up to a constant. This method of score matching is called Denoising Score Matching since it uses the conditional of the noisy sample given the clean one to calculate the score.
+Once we have access to the score estimation, sampling can be done by using a general SDE solver and simulating the answer to the reverse SDE.
 
-
+\section{Jeffrey's rule of Conditioning}
+Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. (AGAIN CHECK FOR CITATION, CAN I CITE THE JEFFREY'S PDF FROM JES?). Given the set $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$, where we assume that all the sets $\mathcal{Z}_1, \mathcal{Z}_2, \ldots, \mathcal{Z}_d$ are countable. Next, we have some probabilistic model which we describe as a probability distribution over $\mathcal{Z}$. We assume that the probability distribution has full support, meaning that there is a non-zero probability of each event occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. TALK ABOUT MEASURE THEORETIC FORMULATION? OR MAYBE JUST MENTION IT LIKE IN THE JEFFREY PDF
 
 
