@@ -1,0 +1,32 @@
+run_name: null
+device: auto
+seed: 42
+
+model:
+  model_channels: 64
+  channel_mult: [1, 2, 4]
+  num_res_blocks: 2
+  attn_resolutions: [7]
+  dropout: 0.0
+  resamp_with_conv: true
+
+sde:
+  type: vp
+  t_min: 0.00001
+  t_max: 1.0
+  beta_min: 0.1
+  beta_max: 20.0
+
+sampling:
+  method: pc
+  predictor: euler_maruyama
+  corrector: langevin
+  corrector_steps: 1
+  snr: 0.16
+
+train:
+  num_epochs: 2000
+  batch_size: 64
+  test_batch_size: 1000
+  learning_rate: 0.0001
+  checkpoint_every: 500
