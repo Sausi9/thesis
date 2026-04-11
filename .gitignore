@@ -45,3 +45,7 @@ code/sandbox/data/
 code/sandbox/runs/
 code/sandbox/checkpoints/
 code/sandbox/artifacts/
+code/score_sde/data/
+code/score_sde/runs/
+code/score_sde/checkpoints/
+code/score_sde/artifacts/
