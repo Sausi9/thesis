@@ -60,7 +60,39 @@ For conditional generation the standard setup is that there is some observation 
 p_\theta(x^{0:T} \mid y)
 = \frac{p_\theta(x^{0:T}, y)}{p_\theta(y)}
 = \frac{1}{p_\theta(y)} \left[ p(x^T) \prod_{t=0}^{T-1} p_\theta(x^t \mid x^{t+1}) \right] p_{y \mid x^0}(y \mid x^0)
+\label{eq:conditional_markov}
+\end{equation}
+This factorization naturally fits into the SMC framework and matches the definition of the intermediate distributions nicely. By setting the proposals as $r_T(x^T) = p(x^T)$ and $r_t(x^t \mid x^{t+1}) = p_\theta(x^t \mid x^{t+1})$ for $1 \leq t \leq T$, and the weighting functions as $w_t(x^t, x^{t+1}) = 1$ for $1 \leq t \leq T$ with $w_0(x^0, x^1) = p_{y \mid x^0}(y \mid x^0)$ the final target distribution becomes $\nu_0 = p_\theta(x^{0:T} \mid y)$ with normalizing constant $\mathcal{L}_t = p_\theta(y)$. This is equivalent to simulating the entire unconditional diffusion process and then simply weighting the trajectories according to how likely the observation $y$ is given the final sample $x_0$. That is, this is simply importance sampling with proposal $p_\theta(x^{0:T})$ and final weight $w(x^{0:T}) = p(y \mid x^0)$, with the intermediate weights all set to $1$. If the conditional $p_\theta(x^0 | y)$ is too unlike the marginal $p_\theta(x^0)$ then most of the samples from the proposals will have low likelihood and the weights will kill most of the particles yielding only very few samples that are actually usable. Furthermore, a result from \cite{chatterjee2017samplesizerequiredimportance} says that the number of particles required for accurate estimation of $p_\theta(x^{0:T} \mid y)$ is exponential in $\text{KL}[p_\theta(x^{0:T} \mid y) \parallel p_\theta(x^{0:T})]$. Meaning that if the conditional and marginal are too different, the KL divergence becomes large and the number of particles needed for effective sampling becomes very high.
+
+A method called \textit{twisting} is often used in order to reduce the amount of particles necessary for a good approximation of the final target distribution. \cite{guarniero2016iteratedauxiliaryparticlefilter} \cite{Heng_2020} \cite{naesseth2024elementssequentialmontecarlo}. Twisting uses a sequence of \textit{twisting functions} that alter the naive proposals and weights such that the intermediate distributions become closer to the final target. There exists optimal twisting proposals, denoted as $r^*_t$ that are defined by multiplying the naive proposals by $p_\theta(y \mid x^t)$, that is:
+
+\begin{equation}
+r_T^*(x^T) \propto p(x^T)\, p_\theta(y \mid x^T)
+\text{ and }
+r_t^*(x^t \mid x^{t+1}) \propto p_\theta(x^t \mid x^{t+1})\, p_\theta(y \mid x^t), \quad 0 \leq t < T.
 \end{equation}
 
+By using these proposals an SMC sampler draws exact samples from $p_\theta(x^{0:T})$ since by Bayes rule we get:
+\begin{equation}
+r_T^*(x^T) = p_\theta(x^T \mid y)
+\quad \text{and} \quad
+r_t^*(x^t \mid x^{t+1}) = p_\theta(x^t \mid x^{t+1}, y), \quad 0 \leq t < T.
+\end{equation}
+Sampling from $x^T \sim r^*_T(x^T)$ and $x^t \sim r^*(x^t \mid x^{t+1})$ for $t = T-1, \ldots, 0$ is then equal to sampling from $p_\theta(x^{0:T} \mid y)$ by the chain rule of probability and the factorization in \eqref{eq:conditional_markov}. The law of total probability then gives that the final sample obtained is $x^0 \sim p_\theta(x^0 \mid y)$.
 
-
+This poises one problem, generally the distributions $p_\theta(y \mid x^t)$ are not analytically tractable and so sampling from these twisted proposals is not generally easy to do. Instead TDS approximates the twisting functions with:
+\begin{equation*}
+	\tilde{p}_\theta(y \mid x^t) := p_{y|x^0}(y \mid \hat{x}_\theta(x^t)) \approx p_\theta(y \mid x^t),
+	\label{eq:approx_twisted_func}
+\end{equation*}
+and uses this approximation to define the twisted proposals as:
+\begin{align}
+\tilde{p}_\theta(x^t \mid x^{t+1}, y) &:= \mathcal{N} \left(x^t; x^{t+1} + \sigma^2 s_\theta(x^{t+1}, y), \tilde{\sigma}^2\right), \\
+\text{where} \quad s_\theta(x^{t+1}, y) &:= s_\theta(x^{t+1}) + \nabla_{x^{t+1}} \log \tilde{p}_\theta(y \mid x^{t+1})
+\label{eq:approx_twisted_proposal}
+\end{align}
+and the twisted weights as:
+\begin{equation*}
+w_t(x^t, x^{t+1}) := \frac{p_\theta(x^t \mid x^{t+1})\tilde{p}_\theta(y \mid x^t)}{\tilde{p}_\theta(y \mid x^{t+1})\tilde{p}_\theta(x^t \mid x^{t+1}, y)}, \qquad t = 0, \dots, T - 1
+\end{equation*}
+%TODO POTENTIALLY TALK MORE/EXPLAIN MORE AROUND THE TWISTED PROPOSALS AND TWISTED WEIGHTS ABOVE
