@@ -1,6 +1,7 @@
 \chapter{Background} \label{sec:background}
 This chapter gives the reader background into the theory that this thesis is based on. First, score-based diffusion models are explained via stochastic differential equations, which provides the core framework for the diffusion model implementation of the thesis. Secondly, the core workings of Jeffrey's rule of conditioning are layed down and how it can be used to modify a joint distribution to include a more desirable marginal. Finally, the essentials of some algorithms for doing distribution-guided generation are described.
-\section{SDE Diffusion Models}
+\section{Diffusion Models}
+\section{Score-based Diffusion Models via SDEs}
 Diffusion models are probabilistic generative models that work by slowly corrupting the initial data into noise, and then learn to reverse this corrupted data to generate a clean sample.
 
 Two successful classes of diffusion models, Denoising diffusion probabilistic models (DDPM) \cite{ho2020denoisingdiffusionprobabilisticmodels} and Score matching with Langevin dynamics (SMLD) \cite{song2020generativemodelingestimatinggradients} are referred to as score-based generative models since they either directly estimate the score (SMLD), which is the gradient of the log probability density with respect to the data, or they implicitly estimate it. A breakthrough in diffusion modelling occurred when these two methods were unified and shown to be different discretizations of Stochastic Differential Equations (SDEs) \cite{song2021scorebasedgenerativemodelingstochastic}, a perspective that generalized these frameworks into a continuous-time diffusion process.
@@ -28,5 +29,38 @@ Once we have access to the score estimation, sampling can be done by using a gen
 
 \section{Jeffrey's rule of Conditioning}
 Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. (AGAIN CHECK FOR CITATION, CAN I CITE THE JEFFREY'S PDF FROM JES?). Given the set $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$, where we assume that all the sets $\mathcal{Z}_1, \mathcal{Z}_2, \ldots, \mathcal{Z}_d$ are countable. Next, we have some probabilistic model which we describe as a probability distribution over $\mathcal{Z}$. We assume that the probability distribution has full support, meaning that there is a non-zero probability of each event occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. TALK ABOUT MEASURE THEORETIC FORMULATION? OR MAYBE JUST MENTION IT LIKE IN THE JEFFREY PDF
+
+\section{Twisted Diffusion Sampling}
+%TODO: DOUBLE CHECK THIS TEXT, CAREFULLY READ THE WORDING
+Twisted Diffusion Sampling (TDS) is a sequential Monte Carlo (SMC) algorithm that allows for flexible conditional generation of samples \cite{wu2024practicalasymptoticallyexactconditional}, without needing a conditionally trained model specific to only a single conditional generation task. SMC algorithms are a general way of sampling from a sequence of distributions on variables $x^{0:T}$, terminating at some final target distribution. They work by generating an ensemble of $K$ \textit{particles} $\{x^t_k\}^K_{k=1}$ at timestep $t$ of an iterative procedure which has $T$ steps in total, often denoted as starting at timestep $T$ and going down to $0$. The main components of SMC are, weighting functions denoted by $w_T(x^T)$, $\{w_t(x^t, x^{t+1})\}^{T-1}_{t=0}$ and proposals, which are distributions and are denoted by $r^T(x^T)$, $\{r_t(x^t | x^{t+1})\}^{T-1}_{t=0}$, that are used at each step of the procedure. More definitively, the general recipe for an SMC algorithm is the following:\\
+	At initial timestep $T$; $K$ particles are drawn $x^T_k \sim r_T(x^T)$ and the weights are set to $w^T_k := w_T(x^T_k)$, then repeat sequentially for $T - 1, \ldots, 0:$ 
+	\begin{align*}
+		&\text{resample: } \{x_k^{t+1:T}\}^K_{k=1} \sim \text{Multinomial}(\{x_k^{t+1:T}\}^K_{k=1};\{w^{t+1}_k\}_{k=1}^K)\\ 
+	&\text{propose: }x_k^t \sim r_t(x^t | x^{t+1}), k = 1,\ldots,K\\
+	&\text{weight: }w_k^t := w_t(x^t_k, x^{t+1}_k), k = 1,\ldots,K
+\end{align*}
+At each timestep $t$ the weighting functions and proposals form an intermediate target distribution \cite{wu2024practicalasymptoticallyexactconditional} denoted by $\nu_t$ and defined as:
+\begin{equation*}
+	\nu_t(x^{0:T}) := \frac{1}{\mathcal{L}_t} \left[ r_T(x^T) \prod_{t'=0}^{T-1} r_{t'}(x^{t'} \mid x^{t'+1}) \right] \left[ w_T(x^T) \prod_{t'=t}^{T-1} w_{t'}(x^{t'}, x^{t'+1}) \right]
+\end{equation*}
+With \textit{normalization} constant $\mathcal{L}_t$. These intermediate distributions are the joint probability distributions of all the variables $x^{0:T}$ given the weights of the variables from $T$ to $t$. They can be seen as the distribution of all trajectories from $T$ to $0$ with the path from $T$ to $t$ already having been weighted.(CHECK THE LAST TWO SENTENCES, about informlly describing the intermediate target dists) They are the product of all the proposals, which are distributions, and the weights from $t$ to $T$ which emphasize those trajectories. The constant $\mathcal{L}_t$ is so that they integrate to 1 and form a valid probability distribution. Marginalizing the variables $x^{1:T}$ out of the final distribution $\nu_0(x^{0:T})$, yields $\nu_0(x^{0})$ which is the distribution of $x^0$ given the entire weights of the intermediate steps. (CHECK THIS LAST SENTENCE ALSO) \\
+
+The goal of conditional generation in diffusion models is to generate samples from a desired conditional distribution, $p(x^0 \mid y)$. In this setting, Sequential Monte Carlo (SMC) methods can be used to construct a sequence of distributions whose terminal distribution $\nu_0(x^0)$ matches the desired target. By choosing suitable proposals and weighting functions, the terminal distribution $\nu_0(x^{0})$ of an SMC algorithm can be made to match the desired conditional distribution.\\
+\\
+The weighted particles form a discrete approximation to $\nu_t(x^{t})$ at each timestep $t$:
+\begin{equation}
+	\bigg(\sum_{k'=1}^K w_{k'}^t\bigg)^{-1} \sum_{k=1}^K w_k^t \delta_{x_k^t}(x^t) %DOUBLE CHECK INDEX CORRECTNESS HERE
+\end{equation}
+Where $\delta$ is a Dirac measure. Under standard assumptions, this empirical approximation converges setwise  to $\nu_t(x^t)$ as the number of particles $K \to \infty$ (Proposition~11.4 in \cite{chopin2020introduction}, Appendix A.5 in \cite{wu2024practicalasymptoticallyexactconditional}).
+
+Consequently, the SMC approximation can be made arbitrarily accurate, and in particular the terminal distribution $\nu_0$ provides an arbitrarily accurate approximation of the desired conditional distribution.
+
+For conditional generation the standard setup is that there is some observation $y$ related to the clean data variable $x^0$ through the likelihood $p(y | x^0)$. This, together with the diffusion model $p_{\theta}(x_{0:T})$ defines a joint distribution $p_\theta(x^{0:T}, y) = p_\theta(x^{0:T}) \, p(y \mid x^0)$ where $y$ depends only on $x^0$. The goal of conditional generation is then to sample from $p_\theta(x^0 \mid y)$. By using the Markov chain properties of diffusion models and including the rest of the variables $x^{1:T}$ it is possible to rewrite the conditional as:
+\begin{equation}
+p_\theta(x^{0:T} \mid y)
+= \frac{p_\theta(x^{0:T}, y)}{p_\theta(y)}
+= \frac{1}{p_\theta(y)} \left[ p(x^T) \prod_{t=0}^{T-1} p_\theta(x^t \mid x^{t+1}) \right] p_{y \mid x^0}(y \mid x^0)
+\end{equation}
+
 
 
