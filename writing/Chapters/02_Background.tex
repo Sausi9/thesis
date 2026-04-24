@@ -28,10 +28,29 @@ Where $\lambda : [0,T] \to \mathbb{R}^+$ is positive weighting function and we s
 Once we have access to the score estimation, sampling can be done by using a general SDE solver and simulating the answer to the reverse SDE.
 
 \section{Jeffrey's rule of Conditioning}
-Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. (AGAIN CHECK FOR CITATION, CAN I CITE THE JEFFREY'S PDF FROM JES?). Given the set $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$, where we assume that all the sets $\mathcal{Z}_1, \mathcal{Z}_2, \ldots, \mathcal{Z}_d$ are countable. Next, we have some probabilistic model which we describe as a probability distribution over $\mathcal{Z}$. We assume that the probability distribution has full support, meaning that there is a non-zero probability of each event occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. TALK ABOUT MEASURE THEORETIC FORMULATION? OR MAYBE JUST MENTION IT LIKE IN THE JEFFREY PDF
-
+%TODO: Read over and reword this chapter a bit, needs better flow and writing.
+Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. \cite{MatteiJeffreysRule} The rule can be defined for both discrete and continuous distributions, with sums being replaced by Lebesque integrals and ratios by Radon-Nikodym derivatives accordingly. The discrete case is stated here, since it is a bit simpler and less verbose, but analogous results hold for the continuous case. Given the set $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$, where we assume that all the sets $\mathcal{Z}_1, \mathcal{Z}_2, \ldots, \mathcal{Z}_d$ are countable, and some probabilistic model which we describe as a probability distribution over $\mathcal{Z}$. Furthermore, we assume that the probability distribution has full support, meaning that there is a non-zero probability of each event occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. Now, we assume that there is some subset of the $d$ variables, denoted as $J \subset \{1,\ldots,d\}$, whose marginal distribution, $p(z_J)$, we are unhappy with. This marginal density of the set $J$ is the joint marginal density of all the elements in $J$. The goal is to replace this with a desired marginal $p^*(z_J)$. Denote the set of variables we are happy with as the complement of $J$, that is $I = \{1,\ldots, d\} \setminus J$, then the classic factorization of a joint density is:
+\begin{equation}
+	p(z_I, z_J) = p(z_I \mid z_J)p(z_J)	
+	\label{jef:classic_factorization}
+\end{equation}
+The \textit{Jeffrey updated joint density} is then defined by simply replacing the undesired marginal with the desired one,
+\begin{equation}
+	p^*(z_I, z_J) = p(z_I \mid z_J)p^*(z_J)	
+	\label{jef:jeffrey_updated_density}
+\end{equation}
+This new distribution $p^*$ has, by construction, the correct marginal for $z_J$ and likewise the conditional density of the desirable variables given the desirable ones is preserved, a property often called "rigidity" or the "J condition". A noteworthy property of the construction of $p^*$ are that the marginal of $z_I$,changes according to
+\begin{equation}
+	p^*(z_I) = \sum_{z_J \in \mathcal{Z}_J}p(z_I \mid z_J)p^*(z_J) 
+\end{equation}
+Furthermore, $p^*$ is an \textit{importance-weighted} version of $p$ since by the definition in \eqref{jef:jeffrey_updated_density} and the factorization in \eqref{jef:classic_factorization}, we obtain
+\begin{equation}
+	p^*(z_I, z_J) = p(z_I \mid z_J)p^*(z_J) = \frac{p^*(z_J)}{p(z_J)}p(z_I, z_J)
+\end{equation}
+Theorem 1 in \cite{MatteiJeffreysRule} then states a direct consequence of this property, that all conditionals and marginals of $p^*$ can be expressed as reweighted versions of the original distribution $p$.
+%TODO: GO OVER THE THEOREM AND STATE IT POTENTIALLY, THEN FIGURE OUT WHAT TO TALK ABOUT AFTERWARDS, HOW TO CONNECT IT TO THE THESIS + TDS AND SO ON - ASK JES IF I SHOULD STATE THE THEOREM.
+Another interesting characteristic of this formulation of $p^*$ is, that it is the distribution closest to $p$ that has the desired marginal for $z_J$. No other distribution is more like $p$ while having the correct marginal. Jeffrey's rule therefore provides a principled way to replace an undesired marginal distribution wth a desired target marginal while preserving the corresponding structure. How exactly this update is implemented in practice depends on the problem setting and specific sampling method. 
 \section{Twisted Diffusion Sampling}
-%TODO: DOUBLE CHECK THIS TEXT, CAREFULLY READ THE WORDING
 Twisted Diffusion Sampling (TDS) is a sequential Monte Carlo (SMC) algorithm that allows for flexible conditional generation of samples \cite{wu2024practicalasymptoticallyexactconditional}, without needing a conditionally trained model specific to only a single conditional generation task. SMC algorithms are a general way of sampling from a sequence of distributions on variables $x^{0:T}$, terminating at some final target distribution. They work by generating an ensemble of $K$ \textit{particles} $\{x^t_k\}^K_{k=1}$ at timestep $t$ of an iterative procedure which has $T$ steps in total, often denoted as starting at timestep $T$ and going down to $0$. The main components of SMC are, weighting functions denoted by $w_T(x^T)$, $\{w_t(x^t, x^{t+1})\}^{T-1}_{t=0}$ and proposals, which are distributions and are denoted by $r^T(x^T)$, $\{r_t(x^t | x^{t+1})\}^{T-1}_{t=0}$, that are used at each step of the procedure. More definitively, the general recipe for an SMC algorithm is the following:\\
 	At initial timestep $T$; $K$ particles are drawn $x^T_k \sim r_T(x^T)$ and the weights are set to $w^T_k := w_T(x^T_k)$, then repeat sequentially for $T - 1, \ldots, 0:$ 
 	\begin{align*}
@@ -40,30 +59,31 @@ Twisted Diffusion Sampling (TDS) is a sequential Monte Carlo (SMC) algorithm tha
 	&\text{weight: }w_k^t := w_t(x^t_k, x^{t+1}_k), k = 1,\ldots,K
 \end{align*}
 At each timestep $t$ the weighting functions and proposals form an intermediate target distribution \cite{wu2024practicalasymptoticallyexactconditional} denoted by $\nu_t$ and defined as:
-\begin{equation*}
-	\nu_t(x^{0:T}) := \frac{1}{\mathcal{L}_t} \left[ r_T(x^T) \prod_{t'=0}^{T-1} r_{t'}(x^{t'} \mid x^{t'+1}) \right] \left[ w_T(x^T) \prod_{t'=t}^{T-1} w_{t'}(x^{t'}, x^{t'+1}) \right]
-\end{equation*}
-With \textit{normalization} constant $\mathcal{L}_t$. These intermediate distributions are the joint probability distributions of all the variables $x^{0:T}$ with the path from $T$ to $t$ already having been weighted. They are the product of all the proposals, which are distributions, and the weights from $t$ to $T$. The constant $\mathcal{L}_t$ is so that they integrate to 1 and form a valid probability distribution. Marginalizing the variables $x^{1:T}$ out of the final distribution $\nu_0(x^{0:T})$, yields $\nu_0(x^{0})$ which is the final target distribution of interest and is the distribution of $x^0$ given the entire weights of all the steps.\\
-
-In the context of conditional generation with diffusion models, the goal is to generate samples from a desired conditional distribution, $p(x^0 \mid y)$. In this setting, by choosing suitable proposals and weighting functions, Sequential Monte Carlo (SMC) methods can be used to construct a sequence of distributions whose terminal distribution $\nu_0(x^0)$ matches this desired conditional target.\\
-\\
-However, in this setting it is generally not feasible to calculate the terminal $\nu_0(x^0)$ analytically since it requires marginalizing out the variables $x^1:T$ which requires evaluating an intractable, high-dimensional integral over the highly non-linear transition distributions parameterized by the neural network.
-The weighted particles form a discrete approximation to $\nu_t(x^{t})$ at each timestep $t$:
 \begin{equation}
-	\bigg(\sum_{k'=1}^K w_{k'}^t\bigg)^{-1} \sum_{k=1}^K w_k^t \delta_{x_k^t}(x^t) %DOUBLE CHECK INDEX CORRECTNESS HERE
+	\nu_t(x^{0:T}) := \frac{1}{\mathcal{L}_t} \left[ r_T(x^T) \prod_{t'=0}^{T-1} r_{t'}(x^{t'} \mid x^{t'+1}) \right] \left[ w_T(x^T) \prod_{t'=t}^{T-1} w_{t'}(x^{t'}, x^{t'+1}) \right]
+	\label{eq:intermediate_dist}
 \end{equation}
-Where $\delta$ is a Dirac measure. Under standard assumptions, this empirical approximation converges setwise  to $\nu_t(x^t)$ as the number of particles $K \to \infty$ (Proposition~11.4 in \cite{chopin2020introduction}, Appendix A.5 in \cite{wu2024practicalasymptoticallyexactconditional}). Consequently, the SMC approximation can be made arbitrarily accurate, and therefore provides an arbitrarily accurate approximation of the desired conditional distribution.
+With \textit{normalization} constant $\mathcal{L}_t$. These intermediate distributions are the joint probability distributions of all the variables $x^{0:T}$ with the path from $T$ to $t$ already having been weighted. They are the product of all the proposals, which are distributions, and the weights from $t$ to $T$. The constant $\mathcal{L}_t$ is so that they integrate to 1 and form a valid probability distribution. Marginalizing the variables $x^{1:T}$ out of the final distribution $\nu_0(x^{0:T})$, yields $\nu_0(x^{0})$ which is the final target distribution of interest. It is the distribution of the clean sample $x^0$ induced by the fully weighted distribution over trajectories $x^{0:T}$.\\
 
-For conditional generation the standard setup is that there is some observation $y$ related to the clean data variable $x^0$ through the likelihood $p(y | x^0)$ which may be given by a classifier, a learned scoring function, or a problem-specific measurement model. This, together with the diffusion model $p_{\theta}(x^{0:T})$ defines a joint distribution $p_\theta(x^{0:T}, y) = p_\theta(x^{0:T}) \, p(y \mid x^0)$ where $y$ depends only on $x^0$, since the clean data $x^0$ is only needed for conditioning and not the noisy $x^t$. The goal of conditional generation is then to sample from $p_\theta(x^0 \mid y)$. By using the Markov chain properties of diffusion models and including the rest of the variables $x^{1:T}$ it is possible to rewrite the conditional as:
+For conditional generation the standard setup is that there is some observation $y$ related to the clean data variable $x^0$ through the likelihood $p(y | x^0)$ which may be given by a classifier, a learned scoring function, or some problem-specific model. This, together with the diffusion model $p_{\theta}(x^{0:T})$ defines a joint distribution $p_\theta(x^{0:T}, y) = p_\theta(x^{0:T}) \, p(y \mid x^0)$ where $y$ depends only on $x^0$, since only the clean data $x^0$ is needed for conditioning and not the noisy $x^t$. The goal is then to sample from $p_\theta(x^0 \mid y)$. By using the Markov chain properties of diffusion models and including the rest of the variables $x^{1:T}$ it is possible to rewrite the conditional as:
 \begin{equation}
 p_\theta(x^{0:T} \mid y)
 = \frac{p_\theta(x^{0:T}, y)}{p_\theta(y)}
 = \frac{1}{p_\theta(y)} \left[ p(x^T) \prod_{t=0}^{T-1} p_\theta(x^t \mid x^{t+1}) \right] p_{y \mid x^0}(y \mid x^0)
 \label{eq:conditional_markov}
 \end{equation}
-This factorization naturally fits into the SMC framework and matches the definition of the intermediate distributions nicely. By setting the proposals as $r_T(x^T) = p(x^T)$ and $r_t(x^t \mid x^{t+1}) = p_\theta(x^t \mid x^{t+1})$ for $1 \leq t \leq T$, and the weighting functions as $w_t(x^t, x^{t+1}) = 1$ for $1 \leq t \leq T$ with $w_0(x^0, x^1) = p_{y \mid x^0}(y \mid x^0)$ the final target distribution becomes $\nu_0 = p_\theta(x^{0:T} \mid y)$ with normalizing constant $\mathcal{L}_t = p_\theta(y)$. This is equivalent to simulating the entire unconditional diffusion process and then simply weighting the trajectories according to how likely the observation $y$ is given the final sample $x_0$. That is, this is simply importance sampling with proposal $p_\theta(x^{0:T})$ and final weight $w(x^{0:T}) = p(y \mid x^0)$, with the intermediate weights all set to $1$. If the conditional $p_\theta(x^0 \mid y)$ is too unlike the marginal $p_\theta(x^0)$ then most of the samples from the proposals will have low likelihood and the weights will kill most of the particles yielding only very few samples that are actually usable. Furthermore, a result from \cite{chatterjee2017samplesizerequiredimportance} says that the number of particles required for accurate estimation of $p_\theta(x^{0:T} \mid y)$ is exponential in $\text{KL}[p_\theta(x^{0:T} \mid y) \parallel p_\theta(x^{0:T})]$. Meaning that if the conditional and marginal are too different, the KL divergence becomes large and the number of particles needed for effective sampling becomes very high.
+This factorization naturally fits into the SMC framework and matches the definition of the intermediate distributions nicely.
 
-A method called \textit{twisting} is often used in order to reduce the amount of particles necessary for a good approximation of the final target distribution. \cite{guarniero2016iteratedauxiliaryparticlefilter} \cite{Heng_2020} \cite{naesseth2024elementssequentialmontecarlo}. Twisting uses a sequence of \textit{twisting functions} that alter the naive proposals and weights such that the intermediate distributions become closer to the final target. There exists optimal twisting proposals, denoted as $r^*_t$ that are defined by multiplying the naive proposals by $p_\theta(y \mid x^t)$, that is:
+By choosing appropriate proposals and weights, the terminal distribution of an SMC algorithm can be made to be $p_\theta(x^{0:T} \mid y)$, and thus the final target of interest, $v_0(x^0)$ becomes equal to $p_\theta(x^0 \mid y)$. Now, this target $p_\theta(x^0 \mid y)$, is generally intractable to compute analytically since it requires marginalizing the variables $x^{1:T}$ which in turn requires evaluating an intractable, high-dimensional integral over the highly non-linear transition distributions parameterized by a neural network, i.e. the $p_\theta(x^t \mid x^{t+1})$. Here, a fundamental property of SMC algorithms comes into play:
+The weighted particles form a discrete approximation to $\nu_t(x^{t})$ at each timestep $t$:
+\begin{equation}
+	\bigg(\sum_{k'=1}^K w_{k'}^t\bigg)^{-1} \sum_{k=1}^K w_k^t \delta_{x_k^t}(x^t) %DOUBLE CHECK INDEX CORRECTNESS HERE
+\end{equation}
+Where $\delta$ is a Dirac measure. Under standard assumptions, this empirical approximation converges setwise  to $\nu_t(x^t)$ as the number of particles $K \to \infty$ (Proposition~11.4 in \cite{chopin2020introduction}, Appendix A.5 in \cite{wu2024practicalasymptoticallyexactconditional}). Consequently, this SMC approximation can be made arbitrarily accurate, and therefore provides an arbitrarily accurate approximation of the desired conditional distribution.
+
+As mentioned above, the proposals and weights have to be chosen in a certain way so that the conditional target can be approximated by an SMC method. One such way to choose the proposals and weights is the naive way of choosing them to be the marginal and transition distributions of \eqref{eq:conditional_markov}. That is, by setting $r_T(x^T) = p(x^T)$ and $r_t(x^t \mid x^{t+1}) = p_\theta(x^t \mid x^{t+1})$ for $1 \leq t \leq T$, and the weighting functions as $w_t(x^t, x^{t+1}) = 1$ for $1 \leq t \leq T$ with $w_0(x^0, x^1) = p_{y \mid x^0}(y \mid x^0)$ the final target distribution becomes $\nu_0 = p_\theta(x^{0:T} \mid y)$ with normalizing constant $\mathcal{L}_t = p_\theta(y)$. Which then gives that $\mathbb{P}_K(x^0 \mid y) := (\sum_{k=1}^K w_k^0)^{-1} \sum_{k=1}^K w_k^0 \delta_{x_k^0}(x^0)$ becomes an approximation to $p_\theta(x^0 \mid y)$. This is equivalent to simulating the entire unconditional diffusion process and then simply weighting the trajectories according to how likely the observation $y$ is given the final sample $x_0$. If the conditional distribution $p_\theta(x^0 \mid y)$ differs substantially from the marginal $p_\theta(x^0)$, then  samples drawn from the unconditional diffusion proposal will typically have very small likelihood $p(y \mid x^0)$. As a result, their importance weights become highly uneven, with only a small fraction of particles receiving non-negligible weight. The result in \cite{chatterjee2017samplesizerequiredimportance} formalizes this and says that the number of particles required for accurate estimation of $p_\theta(x^{0:T} \mid y)$ is exponential in $\text{KL}[p_\theta(x^{0:T} \mid y) \parallel p_\theta(x^{0:T})]$. Meaning that if the conditional and marginal are too different, the KL divergence becomes large and the number of particles needed for effective sampling becomes very high.\\ 
+
+To reduce the number of particles needed for a good approximation of the final target distribution, a method called \textit{twisting} can be used. \cite{guarniero2016iteratedauxiliaryparticlefilter} \cite{Heng_2020} \cite{naesseth2024elementssequentialmontecarlo}. Twisting uses a sequence of \textit{twisting functions} that alter the naive proposals and weights such that the intermediate distributions become closer to the final target. There exists optimal twisting proposals, denoted as $r^*_t$ that are defined by multiplying the naive proposals by $p_\theta(y \mid x^t)$, that is:
 
 \begin{equation}
 r_T^*(x^T) \propto p(x^T)\, p_\theta(y \mid x^T)
@@ -71,27 +91,91 @@ r_T^*(x^T) \propto p(x^T)\, p_\theta(y \mid x^T)
 r_t^*(x^t \mid x^{t+1}) \propto p_\theta(x^t \mid x^{t+1})\, p_\theta(y \mid x^t), \quad 0 \leq t < T.
 \end{equation}
 
-By using these proposals an SMC sampler draws exact samples from $p_\theta(x^{0:T})$ since by Bayes rule we get:
+By using these proposals an SMC sampler draws exact samples from $p_\theta(x^{0:T} \mid y)$ since by Bayes rule we get:
 \begin{equation}
 r_T^*(x^T) = p_\theta(x^T \mid y)
 \quad \text{and} \quad
 r_t^*(x^t \mid x^{t+1}) = p_\theta(x^t \mid x^{t+1}, y), \quad 0 \leq t < T.
+\label{eq:optimal_twisted_proposals}
 \end{equation}
 Sampling from $x^T \sim r^*_T(x^T)$ and $x^t \sim r^*(x^t \mid x^{t+1})$ for $t = T-1, \ldots, 0$ is then equal to sampling from $p_\theta(x^{0:T} \mid y)$ by the chain rule of probability and the factorization in \eqref{eq:conditional_markov}. The law of total probability then gives that the final sample obtained is $x^0 \sim p_\theta(x^0 \mid y)$.
 
-This poises one problem, generally the distributions $p_\theta(y \mid x^t)$ are not analytically tractable and so sampling from these twisted proposals is not generally easy to do. Instead TDS approximates the twisting functions with:
-\begin{equation*}
+This poises one problem, generally the distributions $p_\theta(y \mid x^t)$ are not analytically tractable. Writing $p_\theta(y \mid x^t) = \int p(y | x^0)p_\theta(x^0 \mid x^t)$, one can see that evaluating this quantity requires access to $p_\theta(x^0 \mid x^t)$. However, this distribution is itself intractable, as it involves marginalizing over the intermediate variables $x^{1:t-1}$ from the joint distribution $p_\theta(x^{0:t-1} \mid x^t)$, which is intractable. Sampling from these twisted proposals is therefore not generally easy to do. Instead, TDS approximates the twisting functions using the denoising neural network approximations:
+\begin{equation}
 	\tilde{p}_\theta(y \mid x^t) := p_{y|x^0}(y \mid \hat{x}_\theta(x^t)) \approx p_\theta(y \mid x^t),
 	\label{eq:approx_twisted_func}
-\end{equation*}
+\end{equation}
 and uses this approximation to define the twisted proposals as:
 \begin{align}
-\tilde{p}_\theta(x^t \mid x^{t+1}, y) &:= \mathcal{N} \left(x^t; x^{t+1} + \sigma^2 s_\theta(x^{t+1}, y), \tilde{\sigma}^2\right), \\
+\tilde{p}_\theta(x^t \mid x^{t+1}, y) &:= \mathcal{N} \left(x^t; x^{t+1} + \sigma^2 s_\theta(x^{t+1}, y), \tilde{\sigma}^2\right), \label{eq:approx_twisted_proposal}\\
 \text{where} \quad s_\theta(x^{t+1}, y) &:= s_\theta(x^{t+1}) + \nabla_{x^{t+1}} \log \tilde{p}_\theta(y \mid x^{t+1})
-\label{eq:approx_twisted_proposal}
+\label{eq:approx_cond_score}
 \end{align}
 and the twisted weights as:
-\begin{equation*}
+\begin{equation}
 w_t(x^t, x^{t+1}) := \frac{p_\theta(x^t \mid x^{t+1})\tilde{p}_\theta(y \mid x^t)}{\tilde{p}_\theta(y \mid x^{t+1})\tilde{p}_\theta(x^t \mid x^{t+1}, y)}, \qquad t = 0, \dots, T - 1
-\end{equation*}
-%TODO POTENTIALLY TALK MORE/EXPLAIN MORE AROUND THE TWISTED PROPOSALS AND TWISTED WEIGHTS ABOVE
+\label{eq:approx_twisted_weights}
+\end{equation}
+The approximation in \eqref{eq:approx_twisted_func} is tractable, it only needs a single call to the neural network to give an estimate of $x^0$ and furthermore it doesnt require evaluating a huge integral, since the approximation evaluates $y$ against the single most likely expected value of $x^0$ given $x^t$ instead of the entire distribution of possible $x^0$. The neural network is trained to approximate the expected value $\mathbb{E}[x^0 | x^t]$, either directly or implicitly through the score or noise, meaning that the single estimate of $x^0$ becomes increasingly accurate as $t$ approaches $0$, and at $t = 0$, it is easy to make the approximation an equality, by choosing $\hat{x}_\theta(x^0) = x^0$, yielding $\tilde{p}_\theta(y \mid x^0) = p(y \mid x^0)$. The twisted proposals use an approximation of the conditional score in definition \eqref{eq:approx_cond_score}, that is $s_\theta(x^{t+1},y) \approx \nabla_{x^{t+1}} \log p_\theta(x^{t+1}\mid y)$, which is made up of approximations of the unconditional score and the conditional score of $y$ given $x^{t+1}$. Alongside this, there is the proposal variance $\tilde{\sigma}^2$, which can require computationally expensive second-derivative calculations to optimize fully. Therefore, for simplicity, it is standard practice to set it equal to the unconditional transition variance $\sigma^2$. The weighting functions are non-trivial here, because in general the twisted proposals in \eqref{eq:approx_twisted_proposal} will not match the optimal twisted proposals from \eqref{eq:optimal_twisted_proposals}, and so they are needed for ensuring the terminal distribution converges to the desired target. By replacing the proposals and weights in \eqref{eq:intermediate_dist} with their twisted counterparts in \eqref{eq:approx_twisted_proposal} and \eqref{eq:approx_twisted_weights} and then simplifying, the intermediate distributions become:
+\begin{equation}
+	\nu_t(x^{0:T}) \propto p_\theta(x^{0:T} \mid y) \left[ \frac{\tilde{p}_\theta(y \mid x^t)}{p_\theta(y \mid x^t)} \prod_{t'=0}^{t-1} \frac{\tilde{p}_\theta(x^{t'} \mid x^{t'+1}, y)}{p_\theta(x^{t'} \mid x^{t'+1}, y)} \right]
+	\label{eq:twisted_intermediate_dist}
+\end{equation}
+When $t = 0$, we have that $\tilde{p}_\theta(y \mid x^0) = p_\theta(y \mid x^0)$ by construction, and so \eqref{eq:twisted_intermediate_dist} becomes $\nu_0(x^{0:T}) = p_\theta(x^{0:T} \mid y)$, as desired. The discrete approximations then arbitrarily approximate $p_\theta(x^0 \mid y)$ understandard conditions (POTENTIALLY LIST THEM? IN APPENDIX OR?). The Twisted Diffusion Sampler (TDS) algorithm as written in \cite{wu2024practicalasymptoticallyexactconditional}, is given in \eqref{alg:tds}\\
+\begin{algorithm}[H]
+\caption{Twisted Diffusion Sampler (TDS)}
+\label{alg:tds}
+\SetKwComment{Comment}{// }{}
+\SetCommentSty{texttt}
+
+\For{$k = 1 : K$}{
+    $x_k^T \sim p(x^T), \quad w_k \leftarrow \tilde{p}_k^T = \tilde{p}_\theta(y \mid x_k^T)$ \Comment*{initial proposal and weight}
+}
+\For{$t = T - 1, \cdots, 0$}{
+    $\{x_k^{t+1}, \tilde{p}_k^{t+1}\}_{k=1}^K \sim \text{Multinomial}\left(\{x_k^{t+1}, \tilde{p}_k^{t+1}\}_{k=1}^K; \{w_k\}_{k=1}^K\right)$ \Comment*{resample}
+    \For{$k = 1 : K$}{
+        $\tilde{s}_k = (\hat{x}_\theta(x_k^{t+1}) - x_k^{t+1}) / t\sigma^2 + \nabla_{x_k^{t+1}} \log \tilde{p}_k^{t+1}$ \Comment*{conditional score approx.}
+        $x_k^t \sim \tilde{p}_\theta(\cdot \mid x_k^{t+1}, y) := \mathcal{N}\left(x_k^{t+1} + \sigma^2 \tilde{s}_k, \tilde{\sigma}^2\right)$ \Comment*{proposal}
+        $\tilde{p}_k^t \leftarrow \tilde{p}_\theta(y \mid x_k^t)$ \Comment*{twisting function}
+        $w_k \leftarrow p_\theta(x_k^t \mid x_k^{t+1})\tilde{p}_k^t / [\tilde{p}_\theta(x_k^t \mid x_k^{t+1}, y)\tilde{p}_k^{t+1}]$ \Comment*{weight}
+    }
+}
+\end{algorithm}
+%TODO: MAKE SURE THAT THE p(y | x^0) is correct, in the paper they write p_{y | x^0}(y | x^0), CAN I JUST WRITE p OR NO?
+\subsection{From conditional TDS to Jeffrey-guided TDS}
+The formulation and motivation of the Twisted Diffusion Sampler, given above, assumes a standard conditional generation setup. Where, the diffusion model parametrizes a distribution $p_\theta(x^{0:T})$, and another assumed to be known model $p(y \mid x^0)$ predicts information $y$ given $x^0$. Together they define a joint distribution $p_\theta(x^{0:T},y) = p_\theta(x^{0:T})p(y \mid x^0)$, with the goal then being to sample from the conditional $p_\theta(x^0 \mid y)$. In this thesis, the setting is different. Rather than conditioning on a single fixed value of $y$, the goal is distribution-guided generation: to generate samples whose implied attribute marginal matches a desired target marginal $p^*(y)$.
+
+Concretely, writing the joint as $p_\theta(x^{0:T},y)=p_\theta(x^{0:T}\mid y)p(y)$, we treat the original marginal $p(y)$ as undesirable and replace it with $p^*(y)$. Applying Jeffrey's rule gives
+\begin{equation}
+	p^*_\theta(x^{0:T},y)=p_\theta(x^{0:T}\mid y)\,p^*(y)
+	=\frac{p^*(y)}{p(y)}\,p_\theta(x^{0:T},y).
+	\label{jef:joint_application}
+\end{equation}
+Here
+\[
+	p(y)=\int p_\theta(x^{0:T})\,p(y\mid x^0)\,dx^{0:T},
+\]
+and we assume $p(y)>0$ for all $y$ in the domain of interest; that is, the marginal $p(y)$ has full support over the relevant set of $y$ values. By marginalizing $y$ out of the updated joint model, we get,
+\begin{equation}
+	p^*_\theta(x^{0:T}) = \sum_y p^*_\theta(x^{0:T},y) = p_\theta(x^{0:T})\sum_y\frac{p^*(y)}{p(y)}p(y \mid x^0) 
+	\label{eq:tds_jeffrey_target}
+\end{equation}
+Where the last step follows from the factorization in \eqref{jef:joint_application} and the fact that $p_\theta(x^{0:T},y) = p_\theta(x^{0:T}) p(y \mid x^0)$. Equation \eqref{eq:tds_jeffrey_target} is the new TDS target and the goal is then to sample from $p^*_\theta(x^0)$, after marginalizing out $x^{1:T}$. Particularly this is written as:
+\begin{equation}
+	p^*_\theta(x^0) = \int p^*_\theta(x^{0:T})dx^{1:T}
+\end{equation}
+Denoting the guidance term in \eqref{eq:tds_jeffrey_target} by $G(x^0) := \sum_y\frac{p^*(y)}{p(y)}p(y \mid x^0)$, the target changes from $p_\theta(x^{0:T} \mid y)$ in the fixed conditional TDS case to $p^*_\theta(x^{0:T}) = p_\theta(x^{0:T})G(x^0)$. The tractable twisting functions are then similar, except that the approximation of $\tilde{p}_\theta(y \mid x^t)$ is replaced by
+\begin{equation}
+	\tilde{G}_t(x^t) := \sum_y\frac{p^*(y)}{p(y)}p(y \mid \hat{x}_\theta(x^t)) 
+\end{equation}
+and since the distributions are no longer conditioned on fixed $y$ the score approximation, proposals and weights in \ref{eq:approx_twisted_proposal} \ref{eq:approx_cond_score} \ref{eq:approx_twisted_weights} become,
+\begin{align}
+	\tilde p_\theta^*(x^t\mid x^{t+1}) &:= \mathcal N\!\left( x^t;\; x^{t+1}+\sigma^2 s_\theta^*(x^{t+1}), \tilde\sigma^2 \right).\label{jef:new_proposals}\\
+	s_\theta^*(x^{t+1}) &:= s_\theta(x^{t+1}) + \nabla_{x^{t+1}}\log \tilde G_{t+1}(x^{t+1}) \;\approx\; \nabla_{x^{t+1}}\log p_\theta^*(x^{t+1}).
+	\label{jef:new_score_approx}\\
+	w_t^*(x^t,x^{t+1}) &:= \frac{ p_\theta(x^t\mid x^{t+1})\,\tilde G_t(x^t) }{ \tilde G_{t+1}(x^{t+1})\,\tilde p_\theta^*(x^t\mid x^{t+1}) }
+	\label{jef:new_weights}
+\end{align}
+with $w^*_T = \tilde{G}_T(x^T)$
+%TODO: CHECK FORMULATION ABOVE, MAKE SURE INTEGRALS AND SUMS ARE CORRECT, MAYBE ADD A SENTENCE ABOUT IF X AND Y ARE ASSUMED CONTINUOUS OR DISCRETE
+%TODO: DOUBLE CHECK ALL NOTATION IN THE ABOVE SUBCHAPTER, MAKE SURE TRAJECTORIS x^0:T are correct and everything like that
