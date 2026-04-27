@@ -1,0 +1,26 @@
+name: bivariate_gaussian
+dim: 2
+
+mean: &mean [0.0, 0.0]
+covariance: &covariance
+  - [1.0, 0.8]
+  - [0.8, 1.5]
+return_labels: false
+
+train:
+  _target_: src.data.dataset.BivariateGaussianDataset
+  split: train
+  mean: *mean
+  covariance: *covariance
+  num_samples: 60000
+  seed: 101
+  return_labels: ${dataset.return_labels}
+
+test:
+  _target_: src.data.dataset.BivariateGaussianDataset
+  split: test
+  mean: *mean
+  covariance: *covariance
+  num_samples: 12000
+  seed: 102
+  return_labels: ${dataset.return_labels}

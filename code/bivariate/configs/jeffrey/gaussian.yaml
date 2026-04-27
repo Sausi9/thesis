@@ -1,0 +1,6 @@
+enabled: true
+updated_dim: 1
+target:
+  type: gaussian
+  mean: 2.0
+  variance: 0.25

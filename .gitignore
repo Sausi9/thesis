@@ -49,3 +49,7 @@ code/score_sde/data/
 code/score_sde/runs/
 code/score_sde/checkpoints/
 code/score_sde/artifacts/
+code/bivariate/data/
+code/bivariate/runs/
+code/bivariate/checkpoints/
+code/bivariate/artifacts/

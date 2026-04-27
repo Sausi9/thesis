@@ -1,0 +1,21 @@
+defaults:
+  - dataset: bivariate_gaussian
+  - dataloader: default
+  - model: mlp
+  - sde: vp
+  - optimizer: adam
+  - jeffrey: gaussian
+  - training: default
+  - sampling: default
+  - preview: default
+  - resume: none
+  - _self_
+
+seed: 67
+device: auto
+run_name: null
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null

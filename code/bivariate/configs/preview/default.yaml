@@ -1,0 +1,5 @@
+num_samples: 12000
+output_dir: runs/previews
+output_name: null
+bins: 60
+style: whitegrid

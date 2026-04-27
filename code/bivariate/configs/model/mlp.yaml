@@ -1,0 +1,9 @@
+_target_: src.models.mlp.ScoreMLP
+input_dim: ${dataset.dim}
+output_dim: ${dataset.dim}
+hidden_dim: 128
+time_embed_dim: 64
+num_layers: 4
+dropout: 0.0
+activation: silu
+zero_init_output: true

@@ -1,0 +1,8 @@
+artifact_path: null
+artifact_preference: best
+num_samples: 12000
+num_steps: 10000
+output_dir: runs/samples
+output_name: null
+return_mean: true
+progress: true
