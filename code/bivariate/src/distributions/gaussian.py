@@ -31,9 +31,3 @@ def conditional_distribution(given_value, params: dict):
     variance = params.get("variance")
     mean = intercept + slope * given_value
     return torch.distributions.Normal(mean, variance ** 0.5)
-
-def main():
-    x = 1
-
-if __name__ == "__main__":
-    main()

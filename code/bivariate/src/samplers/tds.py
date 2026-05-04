@@ -4,7 +4,7 @@ import math
 
 class TDSSampler:
     def __init__(
-        self, num_particles, diffusion, conditioner, num_samples, sample_shape
+        self, num_particles, sde, conditioner, num_samples, sample_shape
     ):
         self.num_particles = num_particles
         self.diffusion = diffusion
@@ -41,7 +41,7 @@ class TDSSampler:
 
         batch_idx = torch.arange(particles.shape[0], device=particles.device)[:, None]
 
-        resampled_particles = particles[batch_idx, ancestor_idx]  # [B, K, C, H, W]
+        resampled_particles = particles[batch_idx, ancestor_idx]
 
         log_weights = torch.full(
             (particles.shape[0], self.num_particles),

@@ -55,7 +55,7 @@ def jeffrey_updated_gaussian_params(
 
 # This function uses the factorization of the joint into a conditional and marginal
 # and then samples from the marginal and then the conditional, which mirrors the Jeffrey's update
-# directly. This function is more general since the above really only works when the joint is still Gaussian
+# directly. 
 def sample_jeffrey_update(
     joint_mean,
     joint_covariance,

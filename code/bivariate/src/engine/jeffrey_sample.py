@@ -39,6 +39,7 @@ def make_output_path(cfg: DictConfig, project_root: Path) -> Path:
     return output_dir / output_name
 
 
+# THIS FILE USES THE ANALYTIC FORM OF THE UPDATED JOINT, I.E THE CONDITIONAL TIMES THE NEW MARGINAL.
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     if not bool(cfg.jeffrey.enabled):
@@ -79,6 +80,7 @@ def main(cfg: DictConfig) -> None:
 
     result = {
         "samples": samples,
+        "sample_type": "jeffrey_exact",
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,
         "target_marginal": {
@@ -95,6 +97,11 @@ def main(cfg: DictConfig) -> None:
     torch.save(result, output_path)
 
     print(f"Saved Jeffrey samples to: {output_path}")
+    print(
+        f"Preserved conditional: dim {kept_dim} | dim {updated_dim}=z "
+        f"~ N({conditional['intercept']:.4f} + "
+        f"{conditional['slope']:.4f}z, {conditional['variance']:.4f})"
+    )
     print(f"Updated analytic mean: {updated_mean.tolist()}")
     print(f"Updated analytic covariance: {updated_covariance.tolist()}")
     print(f"Sample mean: {sample_mean.tolist()}")

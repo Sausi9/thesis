@@ -1,5 +1,6 @@
 enabled: true
 updated_dim: 1
+source_sample_path: null
 target:
   type: gaussian
   mean: 2.0

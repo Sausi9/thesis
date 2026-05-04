@@ -3,7 +3,7 @@ from pathlib import Path
 
 import hydra
 import matplotlib
-from src.distributions.gaussian import calculate_conditional
+from src.distributions.gaussian import calculate_conditional_params
 import torch
 from omegaconf import DictConfig
 
