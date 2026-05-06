@@ -6,13 +6,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from src.data.preview import make_preview_figure
-
-
-def resolve_path(project_root: Path, path: str | Path) -> Path:
-    resolved = Path(path)
-    if not resolved.is_absolute():
-        resolved = project_root / resolved
-    return resolved.resolve()
+from src.utils import resolve_path
 
 
 def load_latest_sample(run_name: str | None, samples_dir: Path) -> tuple[dict, Path]:
@@ -35,6 +29,20 @@ def make_output_path(sample_path: Path, output_dir: Path) -> Path:
     return output_dir / f"{sample_path.stem}_eval.png"
 
 
+def build_extra_contours(payload: dict) -> list[dict]:
+    if "updated_mean" not in payload or "updated_covariance" not in payload:
+        return []
+    return [
+        {
+            "mean": payload["updated_mean"],
+            "covariance": payload["updated_covariance"],
+            "label": "exact Jeffrey",
+            "color": "#7c3aed",
+            "linestyle": "-.",
+        }
+    ]
+
+
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -47,11 +55,13 @@ def main(cfg: DictConfig) -> None:
     saved_cfg = OmegaConf.create(payload.get("config", {}))
     sample_cfg = OmegaConf.merge(current_cfg, saved_cfg)
 
+    sample_type = str(payload.get("sample_type", "unknown"))
     fig, mean, covariance = make_preview_figure(
         samples,
         sample_cfg,
         sample_contours=True,
-        title_suffix="eval",
+        title_suffix=sample_type,
+        extra_contours=build_extra_contours(payload),
     )
     output_path = make_output_path(sample_path, project_root / "runs/evals")
     fig.savefig(output_path, dpi=180)

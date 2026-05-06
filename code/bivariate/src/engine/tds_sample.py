@@ -1,11 +1,10 @@
 from pathlib import Path
 
-import hydra
 import torch
-from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+import hydra
 
-from src.samplers.reverse_guided import GuidedReverseSDESampler
+from hydra.utils import instantiate
+
 from src.distributions.targets import build_target_marginal
 from src.jeffrey.update import jeffrey_updated_gaussian_params
 from src.utils import (
@@ -16,24 +15,28 @@ from src.utils import (
     timestamped_output_path,
 )
 
+from src.samplers.tds import TDSSampler
+
+
+from omegaconf import DictConfig, OmegaConf
+
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str) -> Path:
     return timestamped_output_path(
         output_dir=resolve_path(project_root, str(cfg.sampling.output_dir)),
         output_name=cfg.sampling.output_name,
-        default_stem=f"{run_name}_naive_guidance_samples",
+        default_stem=f"{run_name}_tds_samples",
         extension=".pt",
     )
 
-
-
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
-def main(cfg: DictConfig) -> None:
+def main(cfg: DictConfig):
     project_root = Path(__file__).resolve().parents[2]
     device = resolve_device(str(cfg.device))
     torch.manual_seed(int(cfg.seed))
 
     artifact_dir = project_root / str(cfg.training.artifacts_dir)
+
     if cfg.sampling.artifact_path is None:
         artifact_path = find_latest_artifact(
             artifact_dir,
@@ -48,29 +51,40 @@ def main(cfg: DictConfig) -> None:
     sde = instantiate(cfg.sde)
 
     num_samples = int(cfg.sampling.num_samples)
-    dim = int(cfg.dataset.dim)
-    
+    data_dim = int(cfg.dataset.dim)
+    updated_dim = cfg.jeffrey.updated_dim
+
     target_marginal = build_target_marginal(cfg.jeffrey.target)
 
-    updated_dim = cfg.jeffrey.updated_dim
+    original_mean = cfg.dataset.mean[updated_dim]
+    original_var = cfg.dataset.covariance[updated_dim][updated_dim]
+    original_marginal = torch.distributions.Normal(original_mean, original_var**0.5)
+
     updated_mean, updated_covariance = jeffrey_updated_gaussian_params(
         joint_mean=cfg.dataset.mean,
         joint_covariance=cfg.dataset.covariance,
         updated_dim=updated_dim,
         target_marginal=target_marginal,
     )
-    original_mean = cfg.dataset.mean[updated_dim]
-    original_var = cfg.dataset.covariance[updated_dim][updated_dim]
-    original_marginal = torch.distributions.Normal(original_mean, original_var ** 0.5)
+    
+    tds = TDSSampler(
+        cfg.sampler.num_particles,
+        sde,
+        num_samples,
+        target_marginal,
+        original_marginal,
+        updated_dim,
+        data_dim,
+        cfg.sampling.num_steps,
+    )
+    samples = tds.sample(model, device)
 
-    sampler = GuidedReverseSDESampler(sde, target_marginal, original_marginal, dim, updated_dim, num_samples)
-
-    samples = sampler.sample(model, cfg.sampling.num_steps, device, True, True)
+    
     run_name = str(payload.get("run_name") or artifact_path.stem)
     output_path = make_output_path(cfg, project_root, run_name)
     result = {
         "samples": samples.detach().cpu(),
-        "sample_type": "naive_guidance",
+        "sample_type": "tds",
         "artifact_path": str(artifact_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,
@@ -90,7 +104,6 @@ def main(cfg: DictConfig) -> None:
     print(f"Saved samples to: {output_path}")
     print(f"Sample mean: {result['sample_mean'].tolist()}")
     print(f"Sample covariance: {result['sample_covariance'].tolist()}")
-
 
 if __name__ == "__main__":
     main()

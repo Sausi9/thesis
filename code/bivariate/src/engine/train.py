@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 import hydra
@@ -8,16 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.auto import tqdm
 
 from src.data.dataset import build_dataloaders
-
-
-def resolve_device(device_name: str) -> torch.device:
-    if device_name != "auto":
-        return torch.device(device_name)
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
+from src.utils import make_run_name, resolve_device, resolve_path, save_yaml
 
 
 def unpack_batch(batch):
@@ -38,21 +28,8 @@ def score_matching_loss(model, sde, x0: torch.Tensor) -> torch.Tensor:
     return ((score_pred * std + epsilon) ** 2).mean()
 
 
-def make_run_name(cfg: DictConfig, dataset_name: str) -> str:
-    run_stem = cfg.run_name or dataset_name
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{run_stem}_{run_id}"
-
-
-def save_yaml(cfg: DictConfig, path: Path) -> None:
-    path.write_text(OmegaConf.to_yaml(cfg, resolve=True), encoding="utf-8")
-
-
 def resolve_checkpoint_path(project_root: Path, checkpoint_path: str) -> Path:
-    path = Path(checkpoint_path)
-    if not path.is_absolute():
-        path = project_root / path
-    return path.resolve()
+    return resolve_path(project_root, checkpoint_path)
 
 
 def assert_resume_config_matches(cfg: DictConfig, checkpoint: dict) -> None:

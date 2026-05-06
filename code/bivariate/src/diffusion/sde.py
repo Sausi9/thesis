@@ -43,7 +43,7 @@ class VPSDE:
     # diffusion coefficient of forward/reverse SDE
     def diffusion(self, t):
         return torch.sqrt((self.beta(t)))
-    
+  
     # just a method that returns both drift and diffusion coefficients, official score sde does this. Common. For convenience
     def sde(self, x, t):
         drift = self.drift(x,t)
@@ -63,4 +63,10 @@ class VPSDE:
     def reverse_drift(self, x, t, score):
         drift, diffusion = self.sde(x, t)
         return drift - diffusion[:, None] ** 2 * score
+    
+    def reverse_transition_params(self, x, t, score, step_size):
+        reverse_drift = self.reverse_drift(x, t, score)
+        mean = x - reverse_drift * step_size
+        variance = self.beta(t) * step_size
+        return mean, variance
 

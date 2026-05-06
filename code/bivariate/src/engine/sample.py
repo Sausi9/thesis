@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 import hydra
@@ -7,55 +6,22 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from tqdm.auto import tqdm
 
-from src.engine.train import resolve_device
-
-
-def resolve_path(project_root: Path, path: str) -> Path:
-    resolved = Path(path)
-    if not resolved.is_absolute():
-        resolved = project_root / resolved
-    return resolved.resolve()
-
-
-def find_latest_artifact(artifact_dir: Path, preference: str) -> Path:
-    patterns = {
-        "best": "*_best.pt",
-        "final": "*_final.pt",
-        "any": "*.pt",
-    }
-    if preference not in patterns:
-        valid = ", ".join(sorted(patterns))
-        raise ValueError(f"Unknown artifact_preference '{preference}'. Expected one of: {valid}.")
-
-    matches = sorted(
-        artifact_dir.glob(patterns[preference]),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if not matches:
-        raise FileNotFoundError(f"No artifacts matching {patterns[preference]} in {artifact_dir}.")
-    return matches[0]
-
-
-def load_model_state(payload: dict) -> dict:
-    if "model_state_dict" in payload:
-        return payload["model_state_dict"]
-    raise KeyError("Expected artifact/checkpoint to contain 'model_state_dict'.")
+from src.utils import (
+    find_latest_artifact,
+    load_model_state,
+    resolve_device,
+    resolve_path,
+    timestamped_output_path,
+)
 
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str) -> Path:
-    output_dir = resolve_path(project_root, str(cfg.sampling.output_dir))
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if cfg.sampling.output_name is not None:
-        output_name = str(cfg.sampling.output_name)
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_name = f"{run_name}_samples_{timestamp}.pt"
-
-    if not output_name.endswith(".pt"):
-        output_name = f"{output_name}.pt"
-    return output_dir / output_name
+    return timestamped_output_path(
+        output_dir=resolve_path(project_root, str(cfg.sampling.output_dir)),
+        output_name=cfg.sampling.output_name,
+        default_stem=f"{run_name}_model_samples",
+        extension=".pt",
+    )
 
 
 @torch.no_grad()
@@ -91,15 +57,13 @@ def euler_maruyama_sample(
         t_batch = torch.full((num_samples,), t, device=device)
 
         score = model(x, t_batch)
-        reverse_drift = sde.reverse_drift(x, t_batch, score)
-        diffusion = sde.diffusion(t_batch)
+        mean, variance = sde.reverse_transition_params(x, t_batch, score, step_size)
 
-        x_mean = x - reverse_drift * step_size
         if i == num_steps - 1 and return_mean:
-            x = x_mean
+            x = mean
         else:
             noise = torch.randn_like(x)
-            x = x_mean + diffusion[:, None] * torch.sqrt(step_size) * noise
+            x = mean + torch.sqrt(variance)[:, None] * noise
 
     return x
 
@@ -141,6 +105,7 @@ def main(cfg: DictConfig) -> None:
     output_path = make_output_path(cfg, project_root, run_name)
     result = {
         "samples": samples.detach().cpu(),
+        "sample_type": "model",
         "artifact_path": str(artifact_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "sample_mean": samples.mean(dim=0).detach().cpu(),

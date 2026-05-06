@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 import hydra
@@ -6,37 +5,21 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from src.distributions.gaussian import calculate_conditional_params
-from src.distributions.targets import GaussianTargetMarginal
+from src.distributions.targets import build_target_marginal
 from src.jeffrey.update import (
     jeffrey_updated_gaussian_params,
     sample_jeffrey_update,
 )
-
-
-def build_target_marginal(target_cfg: DictConfig) -> GaussianTargetMarginal:
-    target_type = str(target_cfg.type)
-    if target_type != "gaussian":
-        raise ValueError(f"Unsupported Jeffrey target type: {target_type}")
-
-    return GaussianTargetMarginal(
-        mean=float(target_cfg.mean),
-        variance=float(target_cfg.variance),
-    )
+from src.utils import timestamped_output_path
 
 
 def make_output_path(cfg: DictConfig, project_root: Path) -> Path:
-    output_dir = project_root / str(cfg.sampling.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if cfg.sampling.output_name is not None:
-        output_name = str(cfg.sampling.output_name)
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_name = f"{cfg.dataset.name}_jeffrey_samples_{timestamp}.pt"
-
-    if not output_name.endswith(".pt"):
-        output_name = f"{output_name}.pt"
-    return output_dir / output_name
+    return timestamped_output_path(
+        output_dir=project_root / str(cfg.sampling.output_dir),
+        output_name=cfg.sampling.output_name,
+        default_stem=f"{cfg.dataset.name}_exact_jeffrey_samples",
+        extension=".pt",
+    )
 
 
 # THIS FILE USES THE ANALYTIC FORM OF THE UPDATED JOINT, I.E THE CONDITIONAL TIMES THE NEW MARGINAL.
@@ -80,7 +63,7 @@ def main(cfg: DictConfig) -> None:
 
     result = {
         "samples": samples,
-        "sample_type": "jeffrey_exact",
+        "sample_type": "exact_jeffrey",
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,
         "target_marginal": {

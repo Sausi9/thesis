@@ -76,6 +76,7 @@ def make_preview_figure(
     *,
     sample_contours: bool = False,
     title_suffix: str = "preview",
+    extra_contours: list[dict] | None = None,
 ):
     sns.set_theme(style=str(cfg.preview.style), context="notebook")
     samples = samples.detach().cpu()
@@ -120,11 +121,21 @@ def make_preview_figure(
         label="target" if sample_contours else None,
     )
     if sample_contours:
+        if extra_contours is not None:
+            for contour in extra_contours:
+                plot_gaussian_contours(
+                    ax_scatter,
+                    torch.as_tensor(contour["mean"], dtype=torch.float32),
+                    torch.as_tensor(contour["covariance"], dtype=torch.float32),
+                    color=str(contour.get("color", "#7c3aed")),
+                    linestyle=str(contour.get("linestyle", "-.")),
+                    label=str(contour.get("label", "extra target")),
+                )
         plot_gaussian_contours(
             ax_scatter,
             mean,
             covariance,
-            color="#dc2626",
+            color="#f97316",
             linestyle="--",
             label="samples",
         )
