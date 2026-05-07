@@ -77,7 +77,7 @@ def main(cfg: DictConfig):
         data_dim,
         cfg.sampling.num_steps,
     )
-    samples = tds.sample(model, device)
+    samples = tds.sample(model, device, progress=bool(cfg.sampling.progress))
 
     
     run_name = str(payload.get("run_name") or artifact_path.stem)

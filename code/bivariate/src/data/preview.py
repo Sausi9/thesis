@@ -54,7 +54,7 @@ def plot_gaussian_contours(
     angles = torch.linspace(0, 2 * torch.pi, 300)
     circle = torch.stack([angles.cos(), angles.sin()])
 
-    for radius, alpha in ((1.0, 0.9), (2.0, 0.55), (3.0, 0.3)):
+    for radius in (1.0, 2.0, 3.0):
         ellipse = (
             mean[:, None]
             + radius * eigenvectors @ torch.diag(torch.sqrt(eigenvalues)) @ circle
@@ -65,7 +65,7 @@ def plot_gaussian_contours(
             color=color,
             linestyle=linestyle,
             linewidth=1.2,
-            alpha=alpha,
+            alpha=0.9,
             label=label if radius == 1.0 else None,
         )
 

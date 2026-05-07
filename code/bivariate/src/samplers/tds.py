@@ -1,5 +1,6 @@
 import torch
 import math
+from tqdm.auto import tqdm
 
 
 class TDSSampler:
@@ -148,7 +149,7 @@ class TDSSampler:
         )
         return log_weight
 
-    def sample(self, model, device):
+    def sample(self, model, device, progress=True):
         K = self.num_particles
         B = self.num_samples
         D = self.data_dim
@@ -176,7 +177,11 @@ class TDSSampler:
             device=device,
         )
 
-        for i in range(self.num_steps):
+        iterator = range(self.num_steps)
+        if progress:
+            iterator = tqdm(iterator, desc="TDS sampling", leave=True)
+
+        for i in iterator:
             # t+1
             t_prev = timesteps[i]
             # t
