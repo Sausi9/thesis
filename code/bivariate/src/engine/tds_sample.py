@@ -66,18 +66,37 @@ def main(cfg: DictConfig):
         updated_dim=updated_dim,
         target_marginal=target_marginal,
     )
+
+    all_samples = []
+    remaining_samples = num_samples
+    while remaining_samples > 0:
+        batch_n = min(cfg.sampling.batch_size, remaining_samples)
+        tds = TDSSampler(
+            cfg.sampler.num_particles,
+            sde,
+            batch_n,
+            target_marginal,
+            original_marginal,
+            updated_dim,
+            data_dim,
+            cfg.sampling.num_steps,
+        )
+        samples_batch = tds.sample(model, device, progress=bool(cfg.sampling.progress))
+        all_samples.append(samples_batch.detach().cpu())
+        remaining_samples -= batch_n
+    samples = torch.cat(all_samples, dim=0)
     
-    tds = TDSSampler(
-        cfg.sampler.num_particles,
-        sde,
-        num_samples,
-        target_marginal,
-        original_marginal,
-        updated_dim,
-        data_dim,
-        cfg.sampling.num_steps,
-    )
-    samples = tds.sample(model, device, progress=bool(cfg.sampling.progress))
+    # tds = TDSSampler(
+    #     cfg.sampler.num_particles,
+    #     sde,
+    #     num_samples,
+    #     target_marginal,
+    #     original_marginal,
+    #     updated_dim,
+    #     data_dim,
+    #     cfg.sampling.num_steps,
+    # )
+    # samples = tds.sample(model, device, progress=bool(cfg.sampling.progress))
 
     
     run_name = str(payload.get("run_name") or artifact_path.stem)

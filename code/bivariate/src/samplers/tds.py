@@ -62,14 +62,6 @@ class TDSSampler:
 
         resampled_particles = particles[batch_idx, ancestor_idx]
 
-        # TODO: THIS SHOULD BE REMOVED I THINK, IT RESETS THE WEIGHTS TO UNIFORM AGAIN, WAS LEFT OVER FROM OLD IMPLEMENTATION
-        log_weights = torch.full(
-            (particles.shape[0], self.num_particles),
-            -math.log(self.num_particles),
-            device=particles.device,
-            dtype=particles.dtype,
-        )
-
         return resampled_particles, log_weights
 
     def estimate_x0(self, x_t, t, score):
@@ -108,7 +100,7 @@ class TDSSampler:
         x_t = torch.distributions.Normal(proposal_mean, proposal_std).sample()
         return x_t
 
-    # returns [B, 1]
+    # returns log of p^*(y)/p(y) i.e. rho(y) in Jeffrey note. Using log allows for subtracting instead of dividing.
     def log_twist(self, score, x_t, t):
         x0_hat = self.estimate_x0(x_t, t, score)
         y_hat = x0_hat[:, self.updated_dim]

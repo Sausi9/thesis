@@ -65,7 +65,7 @@ def plot_gaussian_contours(
             color=color,
             linestyle=linestyle,
             linewidth=1.2,
-            alpha=0.9,
+            alpha=0.8,
             label=label if radius == 1.0 else None,
         )
 
