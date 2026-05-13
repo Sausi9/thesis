@@ -16,10 +16,18 @@ from src.utils import (
 )
 
 from src.samplers.tds import TDSSampler
+from src.distributions.targets import estimate_model_marginal
 
 
 from omegaconf import DictConfig, OmegaConf
 
+def load_samples(sample_path):
+    payload = torch.load(sample_path, map_location="cpu")
+    if payload.get("sample_type") != "model":
+        raise ValueError(
+            f"Expected unconditional model samples, got {payload.get('sample_type')}"
+        )
+    return payload["samples"]
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str) -> Path:
     return timestamped_output_path(
@@ -55,10 +63,14 @@ def main(cfg: DictConfig):
     updated_dim = cfg.jeffrey.updated_dim
 
     target_marginal = build_target_marginal(cfg.jeffrey.target)
+    samples = load_samples(cfg.jeffrey.source_sample_path)
+    # "original marginal" is the model induced marginal here, not the exact original marginal. TDS does this in the paper
+    original_marginal = estimate_model_marginal(samples, updated_dim)
 
-    original_mean = cfg.dataset.mean[updated_dim]
-    original_var = cfg.dataset.covariance[updated_dim][updated_dim]
-    original_marginal = torch.distributions.Normal(original_mean, original_var**0.5)
+
+    # original_mean = cfg.dataset.mean[updated_dim]
+    # original_var = cfg.dataset.covariance[updated_dim][updated_dim]
+    # original_marginal = torch.distributions.Normal(original_mean, original_var**0.5)
 
     updated_mean, updated_covariance = jeffrey_updated_gaussian_params(
         joint_mean=cfg.dataset.mean,

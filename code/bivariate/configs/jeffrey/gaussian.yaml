@@ -1,6 +1,6 @@
 enabled: true
 updated_dim: 1
-source_sample_path: null
+source_sample_path: runs/samples/bivariate_gaussian_20260504_122838_model_samples_20260504_134847.pt 
 target:
   type: gaussian
   mean: 2.0

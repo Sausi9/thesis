@@ -27,3 +27,13 @@ def build_target_marginal(target_cfg: DictConfig) -> GaussianTargetMarginal:
         mean=float(target_cfg.mean),
         variance=float(target_cfg.variance),
     )
+
+#this function estimates p_\theta(y), i.e. the marginal of the updated dim (y by default in the config, can be changed), based on the model. Since, technically tds, should use this and not the analytic marginal.
+def estimate_model_marginal(samples: torch.Tensor, updated_dim: int):
+    y_samples = samples[:, updated_dim]
+    # model mean
+    estimated_mean = y_samples.mean()
+    # model std
+    estimated_std = y_samples.std(unbiased=True)
+    return torch.distributions.Normal(estimated_mean, estimated_std)
+
