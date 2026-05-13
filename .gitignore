@@ -53,6 +53,7 @@ code/bivariate/data/
 code/bivariate/runs/
 code/bivariate/checkpoints/
 code/bivariate/artifacts/
+code/bivariate/jobs/logs
 
 #hpc runs directory
 hpc_runs/
