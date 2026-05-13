@@ -33,6 +33,9 @@ echo "Repository: $repo_root"
 echo "Commit: $(git rev-parse HEAD)"
 echo "Scratch root: $scratch_root"
 echo "Python env: $UV_PROJECT_ENVIRONMENT"
+printf 'Hydra args:'
+printf ' %q' "$@"
+printf '\n'
 nvidia-smi || true
 
 uv sync --frozen

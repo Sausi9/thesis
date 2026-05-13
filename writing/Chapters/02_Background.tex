@@ -1,16 +1,22 @@
 \chapter{Background} \label{sec:background}
 This chapter gives the reader background into the theory that this thesis is based on. First, score-based diffusion models are explained via stochastic differential equations, which provides the core framework for the diffusion model implementation of the thesis. Secondly, the core workings of Jeffrey's rule of conditioning are layed down and how it can be used to modify a joint distribution to include a more desirable marginal. Finally, the essentials of some algorithms for doing distribution-guided generation are described.
 \section{Diffusion Models}
+Diffusion models are probabilistic generative models that operate through two distinct processes, a forward process and a reverse process. The forward process slowly corrupts the initial data into noise. Then, the reverse process learns to reverse this corrupted data in order to generate a clean sample. Diffusion models were first introduced in \cite{sohldickstein2015deepunsupervisedlearningusing}, taking inspiration from nonequilibrium thermodynamics. The forward and reverse processes were formulated as discrete Markov chains, where at each time step $t$, the state of the noisy data only depends on the state at the previous time step $t - 1$. Formally the forward process is defined as:
+\begin{align*}
+	&q(\mathbf{x}_{1:T} | \mathbf{x}_0) = \prod_{t=1}^T q(\mathbf{x}_t | \mathbf{x}_{t-1}) \text{ where }\\
+	&q(\mathbf{x}_t | \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t \mathbf{I})
+\end{align*}
+Where the $\beta_t$ form a variance schedule $\{\beta_t \in (0, 1)\}^T_{t=1}$ that controls how much noise is added at each step, ensuring that at the end the data has become pure Gaussian noise. The reverse process is then formulated as:
+\begin{align*}
+	&p_\theta(\mathbf{x}_{0:T}) = p(\mathbf{x}_T) \prod_{t=1}^T p_\theta(\mathbf{x}_{t-1} | \mathbf{x}_t)\\
+	&p_\theta(\mathbf{x}_{t-1} | \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))
+\end{align*}
+The goal was then to learn the transition distributions of the reverse process, which would finally yield clean images. Initially, the reverse transitions were parametrized by a neural network where training was done by maximizing the lower bound of the model log likelihood. Subsequent work showed that instead of learning the log likelihood it was possible to learn the score of the perturbed data distribution, which is the gradient of the log of the distribution and points to where higher density regions of clean data lie \cite{song2020generativemodelingestimatinggradients}. Furthermore, it was shown that learning the log likelihood of the reverse transitions, which is in practice done by learning the Evidence Lower Bound (ELBO), can be mathematically reformulated as learning to predict the noise added during the forward process.\cite{ho2020denoisingdiffusionprobabilisticmodels}. This learning objective was proved to be functionally equivalent to learning the score. Diffusion models that learn the score, either directly or implicitly through this reformulation of the ELBO are called score-based diffusion models.
+
+ Two very successful types of score-based diffusion models are Denoising diffusion propabilistic models (DDPM) \cite{ho2020denoisingdiffusionprobabilisticmodels} and Score matching with Langevin dynamics (SMLD) \cite{song2020generativemodelingestimatinggradients}\footnote{While SMLD is today categorized as a core diffusion model, it was originally introduced purely as a score-matching technique. It was grouped into the diffusion family only after subsequent work proved its mathematical equivalency to DDPM and unified both methods under the continuous-time SDE framework.}. A breakthrough in diffusion model research occurred when these two score-based methods were unified and shown to be different discretizations of Stochastic Differential Equations (SDEs) \cite{song2021scorebasedgenerativemodelingstochastic}, a perspective that generalized these frameworks into continuous-time diffusion processes.
+
 \section{Score-based Diffusion Models via SDEs}
-Diffusion models are probabilistic generative models that work by slowly corrupting the initial data into noise, and then learn to reverse this corrupted data to generate a clean sample.
-
-Two successful classes of diffusion models, Denoising diffusion probabilistic models (DDPM) \cite{ho2020denoisingdiffusionprobabilisticmodels} and Score matching with Langevin dynamics (SMLD) \cite{song2020generativemodelingestimatinggradients} are referred to as score-based generative models since they either directly estimate the score (SMLD), which is the gradient of the log probability density with respect to the data, or they implicitly estimate it. A breakthrough in diffusion modelling occurred when these two methods were unified and shown to be different discretizations of Stochastic Differential Equations (SDEs) \cite{song2021scorebasedgenerativemodelingstochastic}, a perspective that generalized these frameworks into a continuous-time diffusion process.
-
-MAYBE TALK ABOUT DIFFUSION PROCESSES HERE? WHAT THE DEFINITION IS ETC (MARKOV CHAIN SATISFYING TWO PROPERTIES)
-
-ALSO MAYBE HAVE SUBSECTIONS TALKING ABOUT DDPM AND SMLD IN MORE DETAIL?
-
-Score-based generative modelling via SDEs uses an infinite number of noise scales to perturb the data such that it evolves according to an SDE. The diffusion process then becomes $\{\mathbf{x}(t)\}_{t=0}^T$, indexed by the continuous time variable $t \in [0, T]$ instead of being made up of a discrete, finite number of noise scales. This diffusion process is such that when $t$ is equal to $0$ it matches the training data distribution and when $t=T$ it matches some given prior distribution which is usually Gaussian noise with a fixed mean and variance.  The reverse process is then modelled by the reverse-time SDE of the forward process, (MAYBE OMIT THIS PART? ->) which is itself a diffusion process \cite{ANDERSON1982313}. The forward diffusion process can be formulated as the solution to an Itô SDE \cite{oksendal2010stochastic}.
+Score-based diffusion models via SDEs use an infinite number of noise scales to perturb the data such that it evolves according to an SDE. The forward diffusion process then becomes $\{\mathbf{x}(t)\}_{t=0}^T$, indexed by the continuous time variable $t \in [0, T]$ instead of being made up of a discrete, finite number of noise scales. This diffusion process is such that when $t$ is equal to $0$ it matches the training data distribution and when $t=T$ it matches some given prior distribution which is usually Gaussian noise with a fixed mean and variance.  The reverse process is then modelled by the reverse-time SDE of the forward process, which is itself a diffusion process \cite{ANDERSON1982313}. The forward diffusion process can be formulated as the solution to the Itô SDE \cite{oksendal2010stochastic}.
 \begin{equation}
 	\text{d}\mathbf{x} = \mathbf{f}(\mathbf{x}, t)\text{d}t + g(t)\text{d}\mathbf{w}
 \end{equation}
@@ -26,10 +32,11 @@ The solution to this SDE is then a stochastic process such that when simulated y
 \end{equation}
 Where $\lambda : [0,T] \to \mathbb{R}^+$ is positive weighting function and we sample $t$ uniformly from $[0,T]$. Note that for the score, the conditional density $p(x(t) | x(0))$ is used, instead of the marginal of $x(t)$, this is again because the marginal is generally hard to compute and a result from \cite{vincent} shows that the scores are equal for the two distributions up to a constant. This method of score matching is called Denoising Score Matching since it uses the conditional of the noisy sample given the clean one to calculate the score.
 Once we have access to the score estimation, sampling can be done by using a general SDE solver and simulating the answer to the reverse SDE.
+%TODO: SKRIFA SMA UM EULER-MARYAMA OG MOGULEGA HVERNIG SCORE MATCHING EG NOTA, THVI EG NOTA EKKI DENOISING HELDUR PREDICTA SCORE BEINT
 
 \section{Jeffrey's rule of Conditioning}
 %TODO: Read over and reword this chapter a bit, needs better flow and writing.
-Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. \cite{MatteiJeffreysRule} The rule can be defined for both discrete and continuous distributions, with sums being replaced by Lebesque integrals and ratios by Radon-Nikodym derivatives accordingly. The discrete case is stated here, since it is a bit simpler and less verbose, but analogous results hold for the continuous case. Given the set $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$, where we assume that all the sets $\mathcal{Z}_1, \mathcal{Z}_2, \ldots, \mathcal{Z}_d$ are countable, and some probabilistic model which we describe as a probability distribution over $\mathcal{Z}$. Furthermore, we assume that the probability distribution has full support, meaning that there is a non-zero probability of each event occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. Now, we assume that there is some subset of the $d$ variables, denoted as $J \subset \{1,\ldots,d\}$, whose marginal distribution, $p(z_J)$, we are unhappy with. This marginal density of the set $J$ is the joint marginal density of all the elements in $J$. The goal is to replace this with a desired marginal $p^*(z_J)$. Denote the set of variables we are happy with as the complement of $J$, that is $I = \{1,\ldots, d\} \setminus J$, then the classic factorization of a joint density is:
+Jeffrey's rule of conditioning is a general method for changing a probability distribution to satisfy some given constraint. \cite{MatteiJeffreysRule} The rule can be defined for both discrete and continuous distributions, with sums being replaced by Lebesque integrals and ratios by Radon-Nikodym derivatives accordingly. The discrete case is stated here, since it is a bit simpler and less verbose, but analogous results hold for the continuous case. Let $\mathcal{Z} = \mathcal{Z}_1 \times \mathcal{Z}_2 \times \ldots \times \mathcal{Z}_d$ be the Cartesian product of countable sets. We consider a probability distribution over $\mathcal{Z}$ with full support, meaning every event has a non-zero probability of occurring. This allows for writing the probability distribution as a strictly positive probability mass function $p: \mathcal{Z} \to (0, 1]$. Now, we assume that there is some subset of the $d$ variables, denoted as $J \subset \{1,\ldots,d\}$, whose marginal distribution, $p(z_J)$, we are unhappy with. This marginal density of the set $J$ is the joint marginal density of all the elements in $J$. The goal is to replace this with a desired marginal $p^*(z_J)$. Denote the set of variables we are happy with as the complement of $J$, that is $I = \{1,\ldots, d\} \setminus J$, then the classic factorization of a joint density is:
 \begin{equation}
 	p(z_I, z_J) = p(z_I \mid z_J)p(z_J)	
 	\label{jef:classic_factorization}
@@ -39,7 +46,7 @@ The \textit{Jeffrey updated joint density} is then defined by simply replacing t
 	p^*(z_I, z_J) = p(z_I \mid z_J)p^*(z_J)	
 	\label{jef:jeffrey_updated_density}
 \end{equation}
-This new distribution $p^*$ has, by construction, the correct marginal for $z_J$ and likewise the conditional density of the desirable variables given the desirable ones is preserved, a property often called "rigidity" or the "J condition". A noteworthy property of the construction of $p^*$ are that the marginal of $z_I$,changes according to
+This new distribution $p^*$ has, by construction, the correct marginal for $z_J$ and likewise the conditional density of the desirable variables given the desirable ones is preserved, a property often called "rigidity" or the "J condition". A noteworthy property of the construction of $p^*$ is that the marginal of $z_I$,changes according to
 \begin{equation}
 	p^*(z_I) = \sum_{z_J \in \mathcal{Z}_J}p(z_I \mid z_J)p^*(z_J) 
 \end{equation}
@@ -50,6 +57,7 @@ Furthermore, $p^*$ is an \textit{importance-weighted} version of $p$ since by th
 Theorem 1 in \cite{MatteiJeffreysRule} then states a direct consequence of this property, that all conditionals and marginals of $p^*$ can be expressed as reweighted versions of the original distribution $p$.
 %TODO: GO OVER THE THEOREM AND STATE IT POTENTIALLY, THEN FIGURE OUT WHAT TO TALK ABOUT AFTERWARDS, HOW TO CONNECT IT TO THE THESIS + TDS AND SO ON - ASK JES IF I SHOULD STATE THE THEOREM.
 Another interesting characteristic of this formulation of $p^*$ is, that it is the distribution closest to $p$ that has the desired marginal for $z_J$. No other distribution is more like $p$ while having the correct marginal. Jeffrey's rule therefore provides a principled way to replace an undesired marginal distribution wth a desired target marginal while preserving the corresponding structure. How exactly this update is implemented in practice depends on the problem setting and specific sampling method. 
+%TODO: MAKE SURE TO HAVE A SMALL SECTION/PART IN THE TDS CHAPTER THAT SAYS THAT TDS ASSUMES THAT THE PROCESSES CAN BE DISCRETE MARKOV CHAINS AND THAT IN OUR SDE FORMULATION OF THE DIFFUSION MODEL, THE EULER-MARYAMA METHOD CAN EXACTLY BE DISCRETIZED AND THUS IS A MARKOV CHAIN? DOUBLE CHECK SPECIFICS.
 \section{Twisted Diffusion Sampling}
 Twisted Diffusion Sampling (TDS) is a sequential Monte Carlo (SMC) algorithm that allows for flexible conditional generation of samples \cite{wu2024practicalasymptoticallyexactconditional}, without needing a conditionally trained model specific to only a single conditional generation task. SMC algorithms are a general way of sampling from a sequence of distributions on variables $x^{0:T}$, terminating at some final target distribution. They work by generating an ensemble of $K$ \textit{particles} $\{x^t_k\}^K_{k=1}$ at timestep $t$ of an iterative procedure which has $T$ steps in total, often denoted as starting at timestep $T$ and going down to $0$. The main components of SMC are, weighting functions denoted by $w_T(x^T)$, $\{w_t(x^t, x^{t+1})\}^{T-1}_{t=0}$ and proposals, which are distributions and are denoted by $r^T(x^T)$, $\{r_t(x^t | x^{t+1})\}^{T-1}_{t=0}$, that are used at each step of the procedure. More definitively, the general recipe for an SMC algorithm is the following:\\
 	At initial timestep $T$; $K$ particles are drawn $x^T_k \sim r_T(x^T)$ and the weights are set to $w^T_k := w_T(x^T_k)$, then repeat sequentially for $T - 1, \ldots, 0:$ 
@@ -145,28 +153,28 @@ When $t = 0$, we have that $\tilde{p}_\theta(y \mid x^0) = p_\theta(y \mid x^0)$
 \subsection{From conditional TDS to Jeffrey-guided TDS}
 The formulation and motivation of the Twisted Diffusion Sampler, given above, assumes a standard conditional generation setup. Where, the diffusion model parametrizes a distribution $p_\theta(x^{0:T})$, and another assumed to be known model $p(y \mid x^0)$ predicts information $y$ given $x^0$. Together they define a joint distribution $p_\theta(x^{0:T},y) = p_\theta(x^{0:T})p(y \mid x^0)$, with the goal then being to sample from the conditional $p_\theta(x^0 \mid y)$. In this thesis, the setting is different. Rather than conditioning on a single fixed value of $y$, the goal is distribution-guided generation: to generate samples whose implied attribute marginal matches a desired target marginal $p^*(y)$.
 
-Concretely, writing the joint as $p_\theta(x^{0:T},y)=p_\theta(x^{0:T}\mid y)p(y)$, we treat the original marginal $p(y)$ as undesirable and replace it with $p^*(y)$. Applying Jeffrey's rule gives
+Concretely, writing the joint as $p_\theta(x^{0:T},y)=p_\theta(x^{0:T}\mid y)p_\theta(y)$, we treat the original model-induced marginal $p_\theta(y)$ as undesirable and replace it with $p^*(y)$. Applying Jeffrey's rule gives
 \begin{equation}
 	p^*_\theta(x^{0:T},y)=p_\theta(x^{0:T}\mid y)\,p^*(y)
-	=\frac{p^*(y)}{p(y)}\,p_\theta(x^{0:T},y).
+	=\frac{p^*(y)}{p_\theta(y)}\,p_\theta(x^{0:T},y).
 	\label{jef:joint_application}
 \end{equation}
 Here
 \[
-	p(y)=\int p_\theta(x^{0:T})\,p(y\mid x^0)\,dx^{0:T},
+	p_\theta(y)=\int p_\theta(x^{0:T})\,p(y\mid x^0)\,dx^{0:T},
 \]
-and we assume $p(y)>0$ for all $y$ in the domain of interest; that is, the marginal $p(y)$ has full support over the relevant set of $y$ values. By marginalizing $y$ out of the updated joint model, we get,
+and we assume $p_\theta(y)>0$ for all $y$ in the domain of interest; that is, the model-induced marginal $p_\theta(y)$ has full support over the relevant set of $y$ values. By marginalizing $y$ out of the updated joint model, we get,
 \begin{equation}
-	p^*_\theta(x^{0:T}) = \sum_y p^*_\theta(x^{0:T},y) = p_\theta(x^{0:T})\sum_y\frac{p^*(y)}{p(y)}p(y \mid x^0) 
+	p^*_\theta(x^{0:T}) = \sum_y p^*_\theta(x^{0:T},y) = p_\theta(x^{0:T})\sum_y\frac{p^*(y)}{p_\theta(y)}p(y \mid x^0) 
 	\label{eq:tds_jeffrey_target}
 \end{equation}
 Where the last step follows from the factorization in \eqref{jef:joint_application} and the fact that $p_\theta(x^{0:T},y) = p_\theta(x^{0:T}) p(y \mid x^0)$. Equation \eqref{eq:tds_jeffrey_target} is the new TDS target and the goal is then to sample from $p^*_\theta(x^0)$, after marginalizing out $x^{1:T}$. Particularly this is written as:
 \begin{equation}
 	p^*_\theta(x^0) = \int p^*_\theta(x^{0:T})dx^{1:T}
 \end{equation}
-Denoting the guidance term in \eqref{eq:tds_jeffrey_target} by $G(x^0) := \sum_y\frac{p^*(y)}{p(y)}p(y \mid x^0)$, the target changes from $p_\theta(x^{0:T} \mid y)$ in the fixed conditional TDS case to $p^*_\theta(x^{0:T}) = p_\theta(x^{0:T})G(x^0)$. The tractable twisting functions are then similar, except that the approximation of $\tilde{p}_\theta(y \mid x^t)$ is replaced by
+Denoting the guidance term in \eqref{eq:tds_jeffrey_target} by $G(x^0) := \sum_y\frac{p^*(y)}{p_\theta(y)}p(y \mid x^0)$, the target changes from $p_\theta(x^{0:T} \mid y)$ in the fixed conditional TDS case to $p^*_\theta(x^{0:T}) = p_\theta(x^{0:T})G(x^0)$. The tractable twisting functions are then similar, except that the approximation of $\tilde{p}_\theta(y \mid x^t)$ is replaced by
 \begin{equation}
-	\tilde{G}_t(x^t) := \sum_y\frac{p^*(y)}{p(y)}p(y \mid \hat{x}_\theta(x^t)) 
+	\tilde{G}_t(x^t) := \sum_y\frac{p^*(y)}{p_\theta(y)}p(y \mid \hat{x}_\theta(x^t)) 
 \end{equation}
 and since the distributions are no longer conditioned on fixed $y$ the score approximation, proposals and weights in \ref{eq:approx_twisted_proposal} \ref{eq:approx_cond_score} \ref{eq:approx_twisted_weights} become,
 \begin{align}
