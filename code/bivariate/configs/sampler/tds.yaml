@@ -1,2 +1,4 @@
 name: tds
 num_particles: 10
+twist_type: tractable
+resample_type: systematic

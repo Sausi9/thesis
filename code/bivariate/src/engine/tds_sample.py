@@ -17,6 +17,7 @@ from src.utils import (
 
 from src.samplers.tds import TDSSampler
 from src.distributions.targets import estimate_model_marginal
+from src.distributions.gaussian import estimate_model_gaussian_params
 
 
 from omegaconf import DictConfig, OmegaConf
@@ -29,11 +30,20 @@ def load_samples(sample_path):
         )
     return payload["samples"]
 
-def make_output_path(cfg: DictConfig, project_root: Path, run_name: str) -> Path:
+def make_run_label(
+    twist_type: str,
+    resample_type: str,
+    num_particles: int,
+    num_steps: int,
+) -> str:
+    return f"{twist_type}_{resample_type}_K{num_particles}_T{num_steps}"
+
+
+def make_output_path(cfg: DictConfig, project_root: Path, run_name: str, run_label: str) -> Path:
     return timestamped_output_path(
         output_dir=resolve_path(project_root, str(cfg.sampling.output_dir)),
         output_name=cfg.sampling.output_name,
-        default_stem=f"{run_name}_tds_samples",
+        default_stem=f"{run_name}_tds_samples_{run_label}",
         extension=".pt",
     )
 
@@ -56,6 +66,7 @@ def main(cfg: DictConfig):
     payload = torch.load(artifact_path, map_location=device)
     model = instantiate(cfg.model).to(device)
     model.load_state_dict(load_model_state(payload))
+    model.eval()
     sde = instantiate(cfg.sde)
 
     num_samples = int(cfg.sampling.num_samples)
@@ -72,6 +83,8 @@ def main(cfg: DictConfig):
     # original_var = cfg.dataset.covariance[updated_dim][updated_dim]
     # original_marginal = torch.distributions.Normal(original_mean, original_var**0.5)
 
+    original_mean, original_cov = estimate_model_gaussian_params(samples)
+
     updated_mean, updated_covariance = jeffrey_updated_gaussian_params(
         joint_mean=cfg.dataset.mean,
         joint_covariance=cfg.dataset.covariance,
@@ -79,19 +92,31 @@ def main(cfg: DictConfig):
         target_marginal=target_marginal,
     )
 
+    twist_type = str(cfg.sampler.twist_type)
+    resample_type = str(cfg.sampler.resample_type)
+    num_particles = int(cfg.sampler.num_particles)
+    num_steps = int(cfg.sampling.num_steps)
+    run_label = make_run_label(twist_type, resample_type, num_particles, num_steps)
+
     all_samples = []
     remaining_samples = num_samples
     while remaining_samples > 0:
         batch_n = min(cfg.sampling.batch_size, remaining_samples)
         tds = TDSSampler(
-            cfg.sampler.num_particles,
+            num_particles,
             sde,
             batch_n,
             target_marginal,
             original_marginal,
             updated_dim,
             data_dim,
-            cfg.sampling.num_steps,
+            num_steps,
+            twist_type=twist_type,
+            base_mean=original_mean,
+            base_covariance=original_cov,
+            updated_mean=updated_mean,
+            updated_covariance=updated_covariance,
+            resample_type=resample_type,
         )
         samples_batch = tds.sample(model, device, progress=bool(cfg.sampling.progress))
         all_samples.append(samples_batch.detach().cpu())
@@ -112,10 +137,16 @@ def main(cfg: DictConfig):
 
     
     run_name = str(payload.get("run_name") or artifact_path.stem)
-    output_path = make_output_path(cfg, project_root, run_name)
+    output_path = make_output_path(cfg, project_root, run_name, run_label)
     result = {
         "samples": samples.detach().cpu(),
         "sample_type": "tds",
+        "run_label": run_label,
+        "twist_type": twist_type,
+        "resample_type": resample_type,
+        "num_particles": num_particles,
+        "num_steps": num_steps,
+        "seed": int(cfg.seed),
         "artifact_path": str(artifact_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,

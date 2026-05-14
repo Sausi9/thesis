@@ -77,6 +77,7 @@ def make_preview_figure(
     sample_contours: bool = False,
     title_suffix: str = "preview",
     extra_contours: list[dict] | None = None,
+    info_lines: list[str] | None = None,
 ):
     sns.set_theme(style=str(cfg.preview.style), context="notebook")
     samples = samples.detach().cpu()
@@ -149,15 +150,18 @@ def make_preview_figure(
     ax_hist_y.set_xlabel("count")
     ax_hist_y.set_ylabel("")
     ax_info.axis("off")
+    summary_lines = [
+        f"n = {samples.shape[0]}",
+        f"mean = [{mean[0]:.3f}, {mean[1]:.3f}]",
+        f"cov = [[{covariance[0, 0]:.3f}, {covariance[0, 1]:.3f}],",
+        f"       [{covariance[1, 0]:.3f}, {covariance[1, 1]:.3f}]]",
+    ]
+    if info_lines:
+        summary_lines.extend(["", *info_lines])
     ax_info.text(
         0.0,
         1.0,
-        (
-            f"n = {samples.shape[0]}\n"
-            f"mean = [{mean[0]:.3f}, {mean[1]:.3f}]\n"
-            f"cov = [[{covariance[0, 0]:.3f}, {covariance[0, 1]:.3f}],\n"
-            f"       [{covariance[1, 0]:.3f}, {covariance[1, 1]:.3f}]]"
-        ),
+        "\n".join(summary_lines),
         va="top",
         ha="left",
         family="monospace",

@@ -1,4 +1,5 @@
 from pathlib import Path
+from textwrap import shorten
 
 import hydra
 import matplotlib.pyplot as plt
@@ -43,6 +44,70 @@ def build_extra_contours(payload: dict) -> list[dict]:
     ]
 
 
+def get_nested(mapping, keys: tuple[str, ...], default=None):
+    value = mapping
+    for key in keys:
+        if not isinstance(value, dict) or key not in value:
+            return default
+        value = value[key]
+    return value
+
+
+def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
+    if "run_label" in payload:
+        return str(payload["run_label"])
+
+    sample_type = str(payload.get("sample_type", "unknown"))
+    if sample_type != "tds":
+        return sample_type
+
+    cfg_dict = OmegaConf.to_container(sample_cfg, resolve=True)
+    twist_type = get_nested(cfg_dict, ("sampler", "twist_type"), "unknown")
+    resample_type = get_nested(cfg_dict, ("sampler", "resample_type"), "unknown")
+    num_particles = get_nested(cfg_dict, ("sampler", "num_particles"), "?")
+    num_steps = get_nested(cfg_dict, ("sampling", "num_steps"), "?")
+    return f"tds_{twist_type}_{resample_type}_K{num_particles}_T{num_steps}"
+
+
+def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -> list[str]:
+    cfg_dict = OmegaConf.to_container(sample_cfg, resolve=True)
+    sample_type = str(payload.get("sample_type", "unknown"))
+    lines = [
+        f"type = {sample_type}",
+        f"file = {shorten(sample_path.name, width=26, placeholder='...')}",
+    ]
+
+    if sample_type == "tds":
+        twist_type = payload.get(
+            "twist_type",
+            get_nested(cfg_dict, ("sampler", "twist_type"), "unknown"),
+        )
+        resample_type = payload.get(
+            "resample_type",
+            get_nested(cfg_dict, ("sampler", "resample_type"), "unknown"),
+        )
+        num_particles = payload.get(
+            "num_particles",
+            get_nested(cfg_dict, ("sampler", "num_particles"), "?"),
+        )
+        num_steps = payload.get(
+            "num_steps",
+            get_nested(cfg_dict, ("sampling", "num_steps"), "?"),
+        )
+        seed = payload.get("seed", get_nested(cfg_dict, ("seed",), "?"))
+        lines.extend(
+            [
+                f"twist = {twist_type}",
+                f"resample = {resample_type}",
+                f"K = {num_particles}",
+                f"steps = {num_steps}",
+                f"seed = {seed}",
+            ]
+        )
+
+    return lines
+
+
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -56,12 +121,14 @@ def main(cfg: DictConfig) -> None:
     sample_cfg = OmegaConf.merge(current_cfg, saved_cfg)
 
     sample_type = str(payload.get("sample_type", "unknown"))
+    run_label = build_run_label(payload, sample_cfg)
     fig, mean, covariance = make_preview_figure(
         samples,
         sample_cfg,
         sample_contours=True,
-        title_suffix=sample_type,
+        title_suffix=run_label,
         extra_contours=build_extra_contours(payload),
+        info_lines=build_info_lines(payload, sample_cfg, sample_path),
     )
     output_path = make_output_path(sample_path, project_root / "runs/evals")
     fig.savefig(output_path, dpi=180)

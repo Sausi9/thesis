@@ -31,3 +31,8 @@ def conditional_distribution(given_value, params: dict):
     variance = params.get("variance")
     mean = intercept + slope * given_value
     return torch.distributions.Normal(mean, variance ** 0.5)
+
+def estimate_model_gaussian_params(samples: torch.Tensor):
+    mean = samples.mean(dim=0)
+    covariance = torch.cov(samples.T)
+    return mean, covariance
