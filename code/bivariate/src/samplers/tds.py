@@ -18,7 +18,9 @@ class TDSSampler:
         base_covariance=None,
         updated_mean=None,
         updated_covariance=None,
-        resample_type=None
+        resample_type=None,
+        adaptive_resampling = False,
+        ess_threshold = 1.0
     ):
         self.num_particles = num_particles
         self.sde = sde
@@ -51,6 +53,8 @@ class TDSSampler:
                     f"Optimal twist requires: {', '.join(missing)}"
                 )
         self.resample_type = resample_type
+        self.adaptive_resampling = adaptive_resampling
+        self.ess_threshold = ess_threshold
 
     def init_particles(self, K, num_samples, sample_shape, device) -> torch.Tensor:
         # x^T ~ p(x^T), where p(x^T) is standard normal
@@ -84,7 +88,7 @@ class TDSSampler:
 
         weights = torch.softmax(log_weights, dim=1)  # [B, K]
         cdf = weights.cumsum(dim=1)                  # [B, K]
-        cdf[:, -1] == 1.0
+        cdf[:, -1] = 1.0
 
         u = torch.rand(B, 1, device=particles.device, dtype=weights.dtype) / K
 
@@ -248,6 +252,12 @@ class TDSSampler:
         )
         return log_weight
 
+    def ess(self, log_weights):
+        weights = torch.softmax(log_weights, dim = 1) #[B, K]
+        squared_weights = weights.pow(2)
+        ess = 1.0 / ((squared_weights.sum(dim=1))) #[B]
+        return ess
+
     def sample(self, model, device, progress=True):
         K = self.num_particles
         B = self.num_samples
@@ -290,8 +300,20 @@ class TDSSampler:
 
             t_prev_flat = torch.full((B * K,), t_prev.item(), device=device)
             t_flat = torch.full((B * K,), t.item(), device=device)
+             
+            
+            mean_ess = self.ess(log_weights).mean()
+            if self.adaptive_resampling and mean_ess < self.ess_threshold * K:
+                # log_weights are returned as 0 here.
+                particles, log_weights = self.resample(particles, log_weights)
 
-            particles, carried_log_weights = self.resample(particles, log_weights)
+            if not self.adaptive_resampling:
+                particles, log_weights = self.resample(particles, log_weights)
+
+            # store the old log_weights or the reset (zero) log_weights in the case where we resample in old_log_weights variable
+            old_log_weights = log_weights
+
+
             x_prev_flat = particles.reshape(B * K, D)
 
             # propose all particles at once
@@ -300,12 +322,13 @@ class TDSSampler:
 
             # compute all weights at once
             # twisting function is called within log_weight
-            log_w_flat = self.log_weight(
+            log_incremental_weights_flat = self.log_weight(
                 model, x_flat, x_prev_flat, t_flat, t_prev_flat, step_size
             ).reshape(B, K)
 
             particles = x_flat.reshape(B, K, D)
-            log_weights = log_w_flat + carried_log_weights
+            # this accumulates weights, by adding old_log_weights and the newly computed weights. If we did not resample, then
+            log_weights = old_log_weights + log_incremental_weights_flat
 
         # particles: [B, K, D]
         # log_weights: [B, K]
