@@ -1,3 +1,4 @@
+from matplotlib.pylab import mean
 from pathlib import Path
 
 import torch
@@ -153,10 +154,15 @@ def main(cfg: DictConfig):
     }
     torch.save(result, output_path)
 
+    mean_diff = result['sample_mean'] - result['updated_mean']
+    cov_diff = result['sample_covariance'] - result['updated_covariance']
+    
     print(f"Loaded artifact: {artifact_path}")
     print(f"Saved samples to: {output_path}")
     print(f"Sample mean: {result['sample_mean'].tolist()}")
     print(f"Sample covariance: {result['sample_covariance'].tolist()}")
+    print(f"Mean diff: {mean_diff.tolist()}")
+    print(f"Cov diff: {cov_diff}")
 
 if __name__ == "__main__":
     main()
