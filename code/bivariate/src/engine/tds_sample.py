@@ -1,3 +1,4 @@
+from matplotlib.pylab import mean
 from pathlib import Path
 
 import torch
@@ -94,6 +95,8 @@ def main(cfg: DictConfig):
 
     twist_type = str(cfg.sampler.twist_type)
     resample_type = str(cfg.sampler.resample_type)
+    adaptive_resampling = bool(cfg.sampler.adaptive_resampling)
+    ess_threshold = float(cfg.sampler.ess_threshold)
     num_particles = int(cfg.sampler.num_particles)
     num_steps = int(cfg.sampling.num_steps)
     run_label = make_run_label(twist_type, resample_type, num_particles, num_steps)
@@ -117,24 +120,13 @@ def main(cfg: DictConfig):
             updated_mean=updated_mean,
             updated_covariance=updated_covariance,
             resample_type=resample_type,
+            adaptive_resampling= adaptive_resampling,
+            ess_threshold= ess_threshold
         )
         samples_batch = tds.sample(model, device, progress=bool(cfg.sampling.progress))
         all_samples.append(samples_batch.detach().cpu())
         remaining_samples -= batch_n
     samples = torch.cat(all_samples, dim=0)
-    
-    # tds = TDSSampler(
-    #     cfg.sampler.num_particles,
-    #     sde,
-    #     num_samples,
-    #     target_marginal,
-    #     original_marginal,
-    #     updated_dim,
-    #     data_dim,
-    #     cfg.sampling.num_steps,
-    # )
-    # samples = tds.sample(model, device, progress=bool(cfg.sampling.progress))
-
     
     run_name = str(payload.get("run_name") or artifact_path.stem)
     output_path = make_output_path(cfg, project_root, run_name, run_label)
@@ -162,10 +154,15 @@ def main(cfg: DictConfig):
     }
     torch.save(result, output_path)
 
+    mean_diff = result['sample_mean'] - result['updated_mean']
+    cov_diff = result['sample_covariance'] - result['updated_covariance']
+    
     print(f"Loaded artifact: {artifact_path}")
     print(f"Saved samples to: {output_path}")
     print(f"Sample mean: {result['sample_mean'].tolist()}")
     print(f"Sample covariance: {result['sample_covariance'].tolist()}")
+    print(f"Mean diff: {mean_diff.tolist()}")
+    print(f"Cov diff: {cov_diff}")
 
 if __name__ == "__main__":
     main()
