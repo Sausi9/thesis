@@ -68,7 +68,9 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
     ess_threshold = get_nested(cfg_dict, ("sampler", "ess_threshold"), "unknown")
     num_particles = get_nested(cfg_dict, ("sampler", "num_particles"), "?")
     num_steps = get_nested(cfg_dict, ("sampling", "num_steps"), "?")
-    return f"tds_{twist_type}_{resample_type}_{adaptive_resampling}_{ess_threshold}_K{num_particles}_T{num_steps}"
+    mode = "adaptive" if adaptive_resampling is True else "always"
+    threshold = f"_ess{ess_threshold:g}" if adaptive_resampling is True else ""
+    return f"{twist_type}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -> list[str]:
