@@ -72,6 +72,8 @@ def main(cfg: DictConfig):
     model = instantiate(cfg.model).to(device)
     model.load_state_dict(load_model_state(payload))
     model.eval()
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
     sde = instantiate(cfg.sde)
 
     num_samples = int(cfg.sampling.num_samples)

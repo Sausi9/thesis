@@ -75,10 +75,11 @@ class TDSSampler:
         # init particles, flattened.
         x_T_flat = init_particles.reshape(B * K, D)
 
-        score = model(x_T_flat, init_t_batch_flat)
-        log_twist_flat = self.log_twist(score, x_T_flat, init_t_batch_flat)
+        with torch.no_grad():
+            score = model(x_T_flat, init_t_batch_flat)
+            log_twist_flat = self.log_twist(score, x_T_flat, init_t_batch_flat)
 
-        log_weights = log_twist_flat.reshape(B, K)
+        log_weights = log_twist_flat.reshape(B, K).detach()
         return log_weights
 
 
@@ -144,7 +145,7 @@ class TDSSampler:
 
         grad_log_twist = torch.autograd.grad(log_twist.sum(), x_req)[0]
 
-        conditional_score_approx = score + grad_log_twist
+        conditional_score_approx = (score + grad_log_twist).detach()
         return conditional_score_approx
 
     # returns proposal which is a x^t_k
@@ -160,7 +161,7 @@ class TDSSampler:
 
         proposal_std = torch.sqrt(proposal_var)[:, None]
 
-        x_t = torch.distributions.Normal(proposal_mean, proposal_std).sample()
+        x_t = torch.distributions.Normal(proposal_mean, proposal_std).sample().detach()
         return x_t
 
 
@@ -221,36 +222,38 @@ class TDSSampler:
 
 
     def log_weight(self, model, x_t, x_prev, t_current, t_prev, step_size):
-        score_prev = model(x_prev, t_prev)
-        score_current = model(x_t, t_current)
+        with torch.no_grad():
+            score_prev = model(x_prev, t_prev)
+            score_current = model(x_t, t_current)
 
-        transition_mean_prev, transition_var_prev = self.sde.reverse_transition_params(
-            x_prev, t_prev, score_prev, step_size
-        )
-        transition_dist_prev = torch.distributions.Normal(
-            transition_mean_prev, torch.sqrt(transition_var_prev)[:, None]
-        )
-        # normal reverse log transition
-        log_transition = transition_dist_prev.log_prob(x_t).sum(dim=1)
+            transition_mean_prev, transition_var_prev = self.sde.reverse_transition_params(
+                x_prev, t_prev, score_prev, step_size
+            )
+            transition_dist_prev = torch.distributions.Normal(
+                transition_mean_prev, torch.sqrt(transition_var_prev)[:, None]
+            )
+            # normal reverse log transition
+            log_transition = transition_dist_prev.log_prob(x_t).sum(dim=1)
 
         conditional_score_approx = self.score_approx(model, x_prev, t_prev)
-        mean_q, var_q = self.sde.reverse_transition_params(
-            x_prev, t_prev, conditional_score_approx, step_size
-        )
-        twisted_transition_dist = torch.distributions.Normal(
-            mean_q, torch.sqrt(var_q)[:, None]
-        )
-        # log of the twisted reverse transition, which uses the conditional score approx, see Eq.9 in TDS paper.
-        log_twisted_transition = twisted_transition_dist.log_prob(x_t).sum(dim=1)
+        with torch.no_grad():
+            mean_q, var_q = self.sde.reverse_transition_params(
+                x_prev, t_prev, conditional_score_approx, step_size
+            )
+            twisted_transition_dist = torch.distributions.Normal(
+                mean_q, torch.sqrt(var_q)[:, None]
+            )
+            # log of the twisted reverse transition, which uses the conditional score approx, see Eq.9 in TDS paper.
+            log_twisted_transition = twisted_transition_dist.log_prob(x_t).sum(dim=1)
 
-        # current and prev log twists, that is \tilde{p} for t and t+1
-        log_twist_current = self.log_twist(score_current, x_t, t_current)
-        log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
+            # current and prev log twists, that is \tilde{p} for t and t+1
+            log_twist_current = self.log_twist(score_current, x_t, t_current)
+            log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
 
-        log_weight = (
-            log_transition + log_twist_current - log_twisted_transition - log_twist_prev
-        )
-        return log_weight
+            log_weight = (
+                log_transition + log_twist_current - log_twisted_transition - log_twist_prev
+            )
+        return log_weight.detach()
 
     def ess(self, log_weights):
         weights = torch.softmax(log_weights, dim = 1) #[B, K]
@@ -302,16 +305,17 @@ class TDSSampler:
             t_flat = torch.full((B * K,), t.item(), device=device)
              
             
-            mean_ess = self.ess(log_weights).mean()
-            if self.adaptive_resampling and mean_ess < self.ess_threshold * K:
-                # log_weights are returned as 0 here.
-                particles, log_weights = self.resample(particles, log_weights)
+            with torch.no_grad():
+                mean_ess = self.ess(log_weights).mean()
+                if self.adaptive_resampling and mean_ess < self.ess_threshold * K:
+                    # log_weights are returned as 0 here.
+                    particles, log_weights = self.resample(particles, log_weights)
 
-            if not self.adaptive_resampling:
-                particles, log_weights = self.resample(particles, log_weights)
+                if not self.adaptive_resampling:
+                    particles, log_weights = self.resample(particles, log_weights)
 
-            # store the old log_weights or the reset (zero) log_weights in the case where we resample in old_log_weights variable
-            old_log_weights = log_weights
+                # store the old log_weights or the reset (zero) log_weights in the case where we resample in old_log_weights variable
+                old_log_weights = log_weights.detach()
 
 
             x_prev_flat = particles.reshape(B * K, D)
@@ -326,9 +330,9 @@ class TDSSampler:
                 model, x_flat, x_prev_flat, t_flat, t_prev_flat, step_size
             ).reshape(B, K)
 
-            particles = x_flat.reshape(B, K, D)
+            particles = x_flat.reshape(B, K, D).detach()
             # this accumulates weights, by adding old_log_weights and the newly computed weights. If we did not resample, then
-            log_weights = old_log_weights + log_incremental_weights_flat
+            log_weights = (old_log_weights + log_incremental_weights_flat).detach()
 
         # particles: [B, K, D]
         # log_weights: [B, K]
