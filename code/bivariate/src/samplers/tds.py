@@ -19,6 +19,7 @@ class TDSSampler:
         updated_mean=None,
         updated_covariance=None,
         resample_type=None,
+        guidance_ramp="none",
         adaptive_resampling = False,
         ess_threshold = 1.0
     ):
@@ -53,6 +54,7 @@ class TDSSampler:
                     f"Optimal twist requires: {', '.join(missing)}"
                 )
         self.resample_type = resample_type
+        self.guidance_ramp = guidance_ramp
         self.adaptive_resampling = adaptive_resampling
         self.ess_threshold = ess_threshold
 
@@ -164,7 +166,16 @@ class TDSSampler:
         x_t = torch.distributions.Normal(proposal_mean, proposal_std).sample().detach()
         return x_t
 
+    def guidance_strength(self, t):
+        if self.guidance_ramp == "none":
+            return torch.ones_like(t)
+        if self.guidance_ramp != "linear":
+            raise ValueError(f"Unsupported guidance ramp {self.guidance_ramp}")
 
+        t_max = self.sde.config.t_max
+        t_min = self.sde.config.t_min
+        linear = (t_max - t) / (t_max - t_min)
+        return linear.clamp(0.0, 1.0)
 
     def log_twist(self, score, x_t, t):
         if self.twist_type == "tractable":
@@ -178,9 +189,10 @@ class TDSSampler:
         x0_hat = self.estimate_x0(x_t, t, score)
         y_hat = x0_hat[:, self.updated_dim]
 
-        return self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
+        base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
             y_hat
         )
+        return self.guidance_strength(t) * base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
     def log_optimal_twist(self, x_t, t_batch):

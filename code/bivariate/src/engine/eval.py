@@ -74,6 +74,7 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
 
     cfg_dict = OmegaConf.to_container(sample_cfg, resolve=True)
     twist_type = get_nested(cfg_dict, ("sampler", "twist_type"), "unknown")
+    guidance_ramp = get_nested(cfg_dict, ("sampler", "guidance_ramp"), "none")
     resample_type = get_nested(cfg_dict, ("sampler", "resample_type"), "unknown")
     adaptive_resampling = get_nested(cfg_dict, ("sampler", "adaptive_resampling"), "unknown")
     ess_threshold = get_nested(cfg_dict, ("sampler", "ess_threshold"), "unknown")
@@ -81,7 +82,8 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
     num_steps = get_nested(cfg_dict, ("sampling", "num_steps"), "?")
     mode = "adaptive" if adaptive_resampling is True else "always"
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling is True else ""
-    return f"{twist_type}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    ramp = "" if guidance_ramp == "none" else f"_{guidance_ramp}-ramp"
+    return f"{twist_type}{ramp}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -> list[str]:
@@ -96,6 +98,10 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
         twist_type = payload.get(
             "twist_type",
             get_nested(cfg_dict, ("sampler", "twist_type"), "unknown"),
+        )
+        guidance_ramp = payload.get(
+            "guidance_ramp",
+            get_nested(cfg_dict, ("sampler", "guidance_ramp"), "none"),
         )
         resample_type = payload.get(
             "resample_type",
@@ -123,6 +129,7 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
         lines.extend(
             [
                 f"twist = {twist_type}",
+                f"guidance ramp = {guidance_ramp}",
                 f"resample = {resample_type}",
                 f"adaptive resampling = {adaptive_resampling}",
                 f"ess threshold = {ess_threshold}",
