@@ -1,0 +1,41 @@
+name: tds_resampling_fixed
+
+base_overrides:
+  device: cuda
+  sampling.num_samples: 12000
+  sampler.num_particles: 16384
+  sampling.num_steps: 1000
+  sampling.batch_size: 50
+  sampling.output_name: null
+  sampling.artifact_path: null
+  sampling.progress: true
+  sampler.ess_threshold: 0.5
+
+job:
+  queue: gpua100
+  cpus: 4
+  gpu: "num=1:mode=exclusive_process"
+  memory: 16GB
+  walltime: "24:00"
+  email: s242762@dtu.dk
+
+variants:
+  - id: multinomial_always
+    overrides:
+      sampler.resample_type: multinomial
+      sampler.adaptive_resampling: false
+
+  - id: multinomial_adaptive
+    overrides:
+      sampler.resample_type: multinomial
+      sampler.adaptive_resampling: true
+
+  - id: systematic_always
+    overrides:
+      sampler.resample_type: systematic
+      sampler.adaptive_resampling: false
+
+  - id: systematic_adaptive
+    overrides:
+      sampler.resample_type: systematic
+      sampler.adaptive_resampling: true

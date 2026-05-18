@@ -34,10 +34,14 @@ def load_samples(sample_path):
 def make_run_label(
     twist_type: str,
     resample_type: str,
+    adaptive_resampling: bool,
+    ess_threshold: float,
     num_particles: int,
     num_steps: int,
 ) -> str:
-    return f"{twist_type}_{resample_type}_K{num_particles}_T{num_steps}"
+    mode = "adaptive" if adaptive_resampling else "always"
+    threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
+    return f"{twist_type}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str, run_label: str) -> Path:
@@ -68,6 +72,8 @@ def main(cfg: DictConfig):
     model = instantiate(cfg.model).to(device)
     model.load_state_dict(load_model_state(payload))
     model.eval()
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
     sde = instantiate(cfg.sde)
 
     num_samples = int(cfg.sampling.num_samples)
@@ -99,7 +105,14 @@ def main(cfg: DictConfig):
     ess_threshold = float(cfg.sampler.ess_threshold)
     num_particles = int(cfg.sampler.num_particles)
     num_steps = int(cfg.sampling.num_steps)
-    run_label = make_run_label(twist_type, resample_type, num_particles, num_steps)
+    run_label = make_run_label(
+        twist_type,
+        resample_type,
+        adaptive_resampling,
+        ess_threshold,
+        num_particles,
+        num_steps,
+    )
 
     all_samples = []
     remaining_samples = num_samples
@@ -120,8 +133,8 @@ def main(cfg: DictConfig):
             updated_mean=updated_mean,
             updated_covariance=updated_covariance,
             resample_type=resample_type,
-            adaptive_resampling= adaptive_resampling,
-            ess_threshold= ess_threshold
+            adaptive_resampling=adaptive_resampling,
+            ess_threshold=ess_threshold,
         )
         samples_batch = tds.sample(model, device, progress=bool(cfg.sampling.progress))
         all_samples.append(samples_batch.detach().cpu())
@@ -136,6 +149,8 @@ def main(cfg: DictConfig):
         "run_label": run_label,
         "twist_type": twist_type,
         "resample_type": resample_type,
+        "adaptive_resampling": adaptive_resampling,
+        "ess_threshold": ess_threshold,
         "num_particles": num_particles,
         "num_steps": num_steps,
         "seed": int(cfg.seed),
