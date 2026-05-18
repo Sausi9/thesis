@@ -33,6 +33,7 @@ def load_samples(sample_path):
 
 def make_run_label(
     twist_type: str,
+    guidance_ramp: str,
     resample_type: str,
     adaptive_resampling: bool,
     ess_threshold: float,
@@ -41,7 +42,8 @@ def make_run_label(
 ) -> str:
     mode = "adaptive" if adaptive_resampling else "always"
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
-    return f"{twist_type}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    ramp = "" if guidance_ramp == "none" else f"_{guidance_ramp}-ramp"
+    return f"{twist_type}{ramp}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str, run_label: str) -> Path:
@@ -100,6 +102,7 @@ def main(cfg: DictConfig):
     )
 
     twist_type = str(cfg.sampler.twist_type)
+    guidance_ramp = str(cfg.sampler.guidance_ramp)
     resample_type = str(cfg.sampler.resample_type)
     adaptive_resampling = bool(cfg.sampler.adaptive_resampling)
     ess_threshold = float(cfg.sampler.ess_threshold)
@@ -107,6 +110,7 @@ def main(cfg: DictConfig):
     num_steps = int(cfg.sampling.num_steps)
     run_label = make_run_label(
         twist_type,
+        guidance_ramp,
         resample_type,
         adaptive_resampling,
         ess_threshold,
@@ -133,6 +137,7 @@ def main(cfg: DictConfig):
             updated_mean=updated_mean,
             updated_covariance=updated_covariance,
             resample_type=resample_type,
+            guidance_ramp=guidance_ramp,
             adaptive_resampling=adaptive_resampling,
             ess_threshold=ess_threshold,
         )
@@ -148,6 +153,7 @@ def main(cfg: DictConfig):
         "sample_type": "tds",
         "run_label": run_label,
         "twist_type": twist_type,
+        "guidance_ramp": guidance_ramp,
         "resample_type": resample_type,
         "adaptive_resampling": adaptive_resampling,
         "ess_threshold": ess_threshold,

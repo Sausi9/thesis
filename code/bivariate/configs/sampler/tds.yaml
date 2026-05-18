@@ -1,6 +1,7 @@
 name: tds
 num_particles: 10
 twist_type: tractable
+guidance_ramp: none
 resample_type: systematic
 adaptive_resampling: true
 ess_threshold: 0.5

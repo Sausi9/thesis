@@ -19,6 +19,7 @@ class TDSSampler:
         updated_mean=None,
         updated_covariance=None,
         resample_type=None,
+        guidance_ramp="none",
         adaptive_resampling = False,
         ess_threshold = 1.0
     ):
@@ -53,6 +54,7 @@ class TDSSampler:
                     f"Optimal twist requires: {', '.join(missing)}"
                 )
         self.resample_type = resample_type
+        self.guidance_ramp = guidance_ramp
         self.adaptive_resampling = adaptive_resampling
         self.ess_threshold = ess_threshold
 
@@ -165,12 +167,15 @@ class TDSSampler:
         return x_t
 
     def guidance_strength(self, t):
+        if self.guidance_ramp == "none":
+            return torch.ones_like(t)
+        if self.guidance_ramp != "linear":
+            raise ValueError(f"Unsupported guidance ramp {self.guidance_ramp}")
+
         t_max = self.sde.config.t_max
         t_min = self.sde.config.t_min
         linear = (t_max - t) / (t_max - t_min)
-        # ensure that we start at 0 and end at 1
-        clamped_linear = linear.clamp(0.0, 1.0)
-        return clamped_linear
+        return linear.clamp(0.0, 1.0)
 
     def log_twist(self, score, x_t, t):
         if self.twist_type == "tractable":
