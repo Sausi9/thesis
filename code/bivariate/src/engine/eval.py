@@ -25,6 +25,17 @@ def load_latest_sample(run_name: str | None, samples_dir: Path) -> tuple[dict, P
     return payload, path
 
 
+def load_sample(sample_path: Path | None, run_name: str | None, samples_dir: Path) -> tuple[dict, Path]:
+    if sample_path is None:
+        return load_latest_sample(run_name, samples_dir)
+
+    if not sample_path.is_file():
+        raise FileNotFoundError(f"No sample file found at {sample_path}.")
+
+    payload = torch.load(sample_path, map_location="cpu")
+    return payload, sample_path
+
+
 def make_output_path(sample_path: Path, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir / f"{sample_path.stem}_eval.png"
@@ -128,9 +139,14 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
 def main(cfg: DictConfig) -> None:
     project_root = Path(__file__).resolve().parents[2]
     samples_dir = resolve_path(project_root, str(cfg.sampling.output_dir))
+    sample_path = (
+        resolve_path(project_root, str(cfg.sampling.sample_path))
+        if cfg.sampling.sample_path is not None
+        else None
+    )
     run_name = str(cfg.run_name) if cfg.run_name is not None else None
 
-    payload, sample_path = load_latest_sample(run_name, samples_dir)
+    payload, sample_path = load_sample(sample_path, run_name, samples_dir)
     samples = payload["samples"]
     current_cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
     saved_cfg = OmegaConf.create(payload.get("config", {}))

@@ -1,5 +1,6 @@
 artifact_path: null
 artifact_preference: best
+sample_path: null
 num_samples: 12000
 batch_size: 50
 num_steps: 10000
