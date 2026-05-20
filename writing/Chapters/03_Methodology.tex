@@ -1,5 +1,13 @@
 \chapter{Methodology}
 This chapter establishes the methods used for the experiments in the thesis. The experiments are rigorously described and defined, what exactly was done and why it was done and the expected results. The first experiment was a simple bivariate toy experiment used for testing the main methods and approaches of the thesis, and to provide a simple enough structure such that the results were clear and straightforward to assess and interprete. Then,... explain other experiements
 \section{Bivariate Toy Example}
-The first experiments were done in a simple bivariate setting. Two dimensional data, $(x,y)$ was generated from a bivariate Gaussian distribution.
+(%TODO: Potentially reference/talk about/point to appendix with model architecture/params in the below paragraph. Also, explain how a bivariate Gaussian works? in really few words? and then talk about the new marginal? I mean its obvious that the original variables x, y have some original marginal each?? I think so but check)
+The first experiments were done in a simple bivariate setting. Two dimensional data, $(x,y)$ was generated from a bivariate Gaussian distribution, and then an SDE score-based diffusion model was trained to generate samples. Furthermore, a new marginal distribution $p^*$ was defined for the $y$ dimension and Jeffrey's rule was used to construct the new updated joint distribution $p^*(x,y)$ which became the new target for sampling. TDS, along with other simpler sampling approaches were tested out and compared. The intention of the bivariate toy example was have a simple environment to test out TDS and other parts of the implementation. Along with getting a sense of how TDS performed and how it compared to the other techniques and which parameters and implementation details made the biggest difference. This experience could then be used for a more complicated problem with higher dimensional data such as images.
+
+Four distinct sampling methods were used and analyzed. First, since the new joint $p^*$ is made up of two Gaussians, the new marginal and the conditional, it is itself a Gaussian distribution. (CITE THIS? FEELS OBVIOUS, BUT DOES IT NEED CITING?)
+model sampling
+exact jeffrey
+importance resampling
+naive guidance sampling
+TDS
 
