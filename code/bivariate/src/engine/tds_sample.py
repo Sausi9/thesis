@@ -33,7 +33,8 @@ def load_samples(sample_path):
 
 def make_run_label(
     twist_type: str,
-    guidance_ramp: str,
+    guidance_ramp: str | None,
+    guidance_start: float,
     resample_type: str,
     adaptive_resampling: bool,
     ess_threshold: float,
@@ -42,7 +43,8 @@ def make_run_label(
 ) -> str:
     mode = "adaptive" if adaptive_resampling else "always"
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
-    ramp = "" if guidance_ramp == "none" else f"_{guidance_ramp}-ramp"
+    ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
+    guidance_start = 0.0 if guidance_start is None else guidance_start
     return f"{twist_type}{ramp}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
@@ -102,7 +104,8 @@ def main(cfg: DictConfig):
     )
 
     twist_type = str(cfg.sampler.twist_type)
-    guidance_ramp = str(cfg.sampler.guidance_ramp)
+    guidance_ramp = cfg.sampler.guidance_ramp
+    guidance_start = cfg.sampler.guidance_start
     resample_type = str(cfg.sampler.resample_type)
     adaptive_resampling = bool(cfg.sampler.adaptive_resampling)
     ess_threshold = float(cfg.sampler.ess_threshold)
@@ -111,6 +114,7 @@ def main(cfg: DictConfig):
     run_label = make_run_label(
         twist_type,
         guidance_ramp,
+        guidance_start,
         resample_type,
         adaptive_resampling,
         ess_threshold,
@@ -138,6 +142,7 @@ def main(cfg: DictConfig):
             updated_covariance=updated_covariance,
             resample_type=resample_type,
             guidance_ramp=guidance_ramp,
+            guidance_start = guidance_start,
             adaptive_resampling=adaptive_resampling,
             ess_threshold=ess_threshold,
         )
@@ -154,6 +159,7 @@ def main(cfg: DictConfig):
         "run_label": run_label,
         "twist_type": twist_type,
         "guidance_ramp": guidance_ramp,
+        "guidance_start": guidance_start,
         "resample_type": resample_type,
         "adaptive_resampling": adaptive_resampling,
         "ess_threshold": ess_threshold,
