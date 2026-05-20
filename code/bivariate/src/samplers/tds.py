@@ -19,7 +19,8 @@ class TDSSampler:
         updated_mean=None,
         updated_covariance=None,
         resample_type=None,
-        guidance_ramp="none",
+        guidance_ramp=None,
+        guidance_start=0.0,
         adaptive_resampling = False,
         ess_threshold = 1.0
     ):
@@ -55,6 +56,16 @@ class TDSSampler:
                 )
         self.resample_type = resample_type
         self.guidance_ramp = guidance_ramp
+        if guidance_start is None:
+            raise ValueError("guidance_start must be set.")
+
+        guidance_start = float(guidance_start)
+        if not 0.0 <= guidance_start < 1.0:
+            raise ValueError(
+                f"guidance_start must be in [0, 1), got {guidance_start}."
+            )
+
+        self.guidance_start = guidance_start
         self.adaptive_resampling = adaptive_resampling
         self.ess_threshold = ess_threshold
 
@@ -166,16 +177,32 @@ class TDSSampler:
         x_t = torch.distributions.Normal(proposal_mean, proposal_std).sample().detach()
         return x_t
 
-    def guidance_strength(self, t):
-        if self.guidance_ramp == "none":
-            return torch.ones_like(t)
-        if self.guidance_ramp != "linear":
-            raise ValueError(f"Unsupported guidance ramp {self.guidance_ramp}")
-
+    def guidance_linear(self, t):
         t_max = self.sde.config.t_max
         t_min = self.sde.config.t_min
-        linear = (t_max - t) / (t_max - t_min)
-        return linear.clamp(0.0, 1.0)
+        lambda_linear = (t_max - t) / (t_max - t_min)
+        return lambda_linear.clamp(0.0, 1.0)
+
+    def guidance_delayed_linear(self, t):
+        t_max = self.sde.config.t_max
+        t_min = self.sde.config.t_min
+        progress = (t_max - t) / (t_max - t_min)
+
+        lambda_delayed_linear = (progress - self.guidance_start) / (1 - self.guidance_start)
+
+        return lambda_delayed_linear.clamp(0.0, 1.0)
+
+    def guidance_strength(self, t):
+        if self.guidance_ramp is None:
+            return torch.ones_like(t)
+        if self.guidance_ramp != "linear" and self.guidance_ramp != "delayed_linear":
+            raise ValueError(f"Unsupported guidance ramp {self.guidance_ramp}")
+
+        if self.guidance_ramp == "linear":
+            return self.guidance_linear(t)
+        if self.guidance_ramp == "delayed_linear":
+            return self.guidance_delayed_linear(t)
+
 
     def log_twist(self, score, x_t, t):
         if self.twist_type == "tractable":
