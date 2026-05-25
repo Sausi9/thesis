@@ -216,9 +216,16 @@ class TDSSampler:
         x0_hat = self.estimate_x0(x_t, t, score)
         y_hat = x0_hat[:, self.updated_dim]
 
-        base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
-            y_hat
-        )
+        mean_target = torch.as_tensor(self.target_marginal.mean)
+        var_target = torch.as_tensor(self.target_marginal.variance)
+
+        mean_original = torch.as_tensor(self.original_marginal.mean)
+        var_original = torch.as_tensor(self.original_marginal.variance)
+
+        # base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
+        #     y_hat
+        # )
+        base_log_twist = -0.5 * ((y_hat - mean_target)**2 / var_target - (y_hat - mean_original) ** 2 / var_original) - torch.log(torch.sqrt(var_target) / torch.sqrt(var_original))
         return self.guidance_strength(t) * base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
