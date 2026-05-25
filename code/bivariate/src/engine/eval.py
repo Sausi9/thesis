@@ -75,6 +75,7 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
     cfg_dict = OmegaConf.to_container(sample_cfg, resolve=True)
     twist_type = get_nested(cfg_dict, ("sampler", "twist_type"), "unknown")
     guidance_ramp = get_nested(cfg_dict, ("sampler", "guidance_ramp"), None)
+    guidance_start = get_nested(cfg_dict, ("sampler", "guidance_start"), None)
     resample_type = get_nested(cfg_dict, ("sampler", "resample_type"), "unknown")
     adaptive_resampling = get_nested(cfg_dict, ("sampler", "adaptive_resampling"), "unknown")
     ess_threshold = get_nested(cfg_dict, ("sampler", "ess_threshold"), "unknown")
@@ -83,7 +84,8 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
     mode = "adaptive" if adaptive_resampling is True else "always"
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling is True else ""
     ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
-    return f"{twist_type}{ramp}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    start = "" if guidance_start is None else f"_guidance_start_{guidance_start}"
+    return f"{twist_type}{ramp}{start}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -> list[str]:
@@ -102,6 +104,10 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
         guidance_ramp = payload.get(
             "guidance_ramp",
             get_nested(cfg_dict, ("sampler", "guidance_ramp"), None),
+        )
+        guidance_start = payload.get(
+            "guidance_start",
+            get_nested(cfg_dict, ("sampler", "guidance_start"), None),
         )
         resample_type = payload.get(
             "resample_type",
@@ -130,6 +136,7 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
             [
                 f"twist = {twist_type}",
                 f"guidance ramp = {guidance_ramp}",
+                f"guidance start = {guidance_start}",
                 f"resample = {resample_type}",
                 f"adaptive resampling = {adaptive_resampling}",
                 f"ess threshold = {ess_threshold}",

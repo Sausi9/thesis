@@ -45,7 +45,7 @@ def make_run_label(
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
     ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
     guidance_start = 0.0 if guidance_start is None else guidance_start
-    return f"{twist_type}{ramp}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    return f"{twist_type}{ramp}_guidance_start_{guidance_start}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
 
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str, run_label: str) -> Path:
