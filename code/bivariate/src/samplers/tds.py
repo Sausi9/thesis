@@ -216,16 +216,41 @@ class TDSSampler:
         x0_hat = self.estimate_x0(x_t, t, score)
         y_hat = x0_hat[:, self.updated_dim]
 
-        mean_target = torch.as_tensor(self.target_marginal.mean)
-        var_target = torch.as_tensor(self.target_marginal.variance)
+        mean_target = torch.as_tensor(
+            self.target_marginal.mean,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
+        var_target = torch.as_tensor(
+            self.target_marginal.variance,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
 
-        mean_original = torch.as_tensor(self.original_marginal.mean)
-        var_original = torch.as_tensor(self.original_marginal.variance)
+        mean_original = torch.as_tensor(
+            self.original_marginal.mean,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
+        var_original = torch.as_tensor(
+            self.original_marginal.variance,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
 
         # base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
         #     y_hat
         # )
-        base_log_twist = -0.5 * ((y_hat - mean_target)**2 / var_target - (y_hat - mean_original) ** 2 / var_original) - torch.log(torch.sqrt(var_target) / torch.sqrt(var_original))
+        a = 1.0 / var_target - 1.0 / var_original
+        b = -2.0 * mean_target / var_target + 2.0 * mean_original / var_original
+        c = mean_target.square() / var_target - mean_original.square() / var_original
+
+        base_log_twist = -0.5 * (
+            a * y_hat.square()
+            + b * y_hat
+            + c
+            + torch.log(var_target / var_original)
+        )
         return self.guidance_strength(t) * base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
