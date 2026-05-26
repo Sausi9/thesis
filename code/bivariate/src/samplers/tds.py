@@ -120,8 +120,11 @@ class TDSSampler:
     
 
     def multinomial_resample(self, particles, log_weights):
-        weights = torch.softmax(log_weights, dim=1)  # [B, K]
 
+        if not torch.isfinite(log_weights).all():
+            raise FloatingPointError("nonfinite log_weights before resampling")
+
+        weights = torch.softmax(log_weights, dim=1)  # [B, K]
         ancestor_idx = torch.multinomial(
             weights,
             num_samples=self.num_particles,
