@@ -120,10 +120,6 @@ class TDSSampler:
     
 
     def multinomial_resample(self, particles, log_weights):
-
-        if not torch.isfinite(log_weights).all():
-            raise FloatingPointError("nonfinite log_weights before resampling")
-
         weights = torch.softmax(log_weights, dim=1)  # [B, K]
         ancestor_idx = torch.multinomial(
             weights,
@@ -407,6 +403,10 @@ class TDSSampler:
             particles = x_flat.reshape(B, K, D).detach()
             # this accumulates weights, by adding old_log_weights and the newly computed weights. If we did not resample, then
             log_weights = (old_log_weights + log_incremental_weights_flat).detach()
+            log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
+            if not torch.isfinite(log_norm).all():
+                raise FloatingPointError("Non-finite log norm")
+            log_weights = log_weights - log_norm
 
         # particles: [B, K, D]
         # log_weights: [B, K]
