@@ -352,6 +352,11 @@ class TDSSampler:
             device,
         )
 
+        log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
+        if not torch.isfinite(log_norm).all():
+            raise FloatingPointError("Non-finite initial log norm")
+        log_weights = log_weights - log_norm
+
         timesteps = torch.linspace(
             self.sde.config.t_max,
             self.sde.config.t_min,
