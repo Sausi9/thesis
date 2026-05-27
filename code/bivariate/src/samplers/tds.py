@@ -165,9 +165,15 @@ class TDSSampler:
 
         log_twist = self.log_twist(score, x_req, t)
 
+        self.check_tensor("score", score)
+        self.check_tensor("log_twist_score_approx", log_twist)
+        
         grad_log_twist = torch.autograd.grad(log_twist.sum(), x_req)[0]
+        self.check_tensor("grad_log_twist", grad_log_twist)
 
         conditional_score_approx = (score + grad_log_twist).detach()
+        self.check_tensor("conditional_score_approx", conditional_score_approx)
+
         return conditional_score_approx
 
     # returns proposal which is a x^t_k
@@ -180,6 +186,9 @@ class TDSSampler:
             conditional_score_approx,
             step_size,
         )
+        
+        self.check_tensor("proposal_mean", proposal_mean)
+        self.check_tensor("proposal_var", proposal_var)
 
         proposal_std = torch.sqrt(proposal_var)[:, None]
 
