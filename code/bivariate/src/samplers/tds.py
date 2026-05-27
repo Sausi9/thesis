@@ -223,7 +223,7 @@ class TDSSampler:
 
     # returns log of p^*(y)/p(y) i.e. rho(y) in Jeffrey note. Using log allows for subtracting instead of dividing.
     def log_tractable_twist(self, score, x_t, t):
-        x0_hat = self.estimate_x0(x_t, t, score)
+        x0_hat = self.estimate_x0(x_t, t, score).double()
         y_hat = x0_hat[:, self.updated_dim]
 
         mean_target = torch.as_tensor(
@@ -258,7 +258,7 @@ class TDSSampler:
         base_log_twist = -0.5 * (
             a * y_hat.square() + b * y_hat + c + torch.log(var_target / var_original)
         )
-        return self.guidance_strength(t) * base_log_twist
+        return self.guidance_strength(t).to(dtype=base_log_twist.dtype) * base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
     def log_optimal_twist(self, x_t, t_batch):
