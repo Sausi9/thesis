@@ -329,8 +329,9 @@ class TDSSampler:
                 x_prev, t_prev, conditional_score_approx, step_size
             )
 
-            mean_diff = mean_q - transition_mean_prev
-            proposal_residual = x_t - mean_q
+            mean_diff = (mean_q - transition_mean_prev).double()
+            proposal_residual = (x_t - mean_q).double()
+            transition_var_prev = transition_var_prev.double()
             # Direct computation of log p(x_t | x_prev) - log q(x_t | x_prev).
             # Both transitions have the same variance in the VP SDE.
             transition_log_ratio = -0.5 * (
@@ -341,6 +342,13 @@ class TDSSampler:
             # current and prev log twists, that is \tilde{p} for t and t+1
             log_twist_current = self.log_twist(score_current, x_t, t_current)
             log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
+
+            self.check_tensor("transition_mean_prev", transition_mean_prev)
+
+            self.check_tensor("mean_q", mean_q)
+            self.check_tensor("mean_diff", mean_diff)
+            self.check_tensor("proposal_residual", proposal_residual)
+            self.check_tensor("transition_var_prev", transition_var_prev)
 
             self.check_tensor("transition_log_ratio", transition_log_ratio)
             self.check_tensor("log_twist_current", log_twist_current)
