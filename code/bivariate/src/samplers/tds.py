@@ -322,36 +322,33 @@ class TDSSampler:
                     x_prev, t_prev, score_prev, step_size
                 )
             )
-            transition_dist_prev = torch.distributions.Normal(
-                transition_mean_prev, torch.sqrt(transition_var_prev)[:, None]
-            )
-            # normal reverse log transition
-            log_transition = transition_dist_prev.log_prob(x_t).sum(dim=1)
 
         conditional_score_approx = self.score_approx(model, x_prev, t_prev)
         with torch.no_grad():
-            mean_q, var_q = self.sde.reverse_transition_params(
+            mean_q, _ = self.sde.reverse_transition_params(
                 x_prev, t_prev, conditional_score_approx, step_size
             )
-            twisted_transition_dist = torch.distributions.Normal(
-                mean_q, torch.sqrt(var_q)[:, None]
-            )
-            # log of the twisted reverse transition, which uses the conditional score approx, see Eq.9 in TDS paper.
-            log_twisted_transition = twisted_transition_dist.log_prob(x_t).sum(dim=1)
+
+            mean_diff = mean_q - transition_mean_prev
+            proposal_residual = x_t - mean_q
+            # Direct computation of log p(x_t | x_prev) - log q(x_t | x_prev).
+            # Both transitions have the same variance in the VP SDE.
+            transition_log_ratio = -0.5 * (
+                2.0 * (proposal_residual * mean_diff).sum(dim=1)
+                + mean_diff.square().sum(dim=1)
+            ) / transition_var_prev
 
             # current and prev log twists, that is \tilde{p} for t and t+1
             log_twist_current = self.log_twist(score_current, x_t, t_current)
             log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
 
-            self.check_tensor("log_transition", log_transition)
-            self.check_tensor("log_twisted_transition", log_twisted_transition)
+            self.check_tensor("transition_log_ratio", transition_log_ratio)
             self.check_tensor("log_twist_current", log_twist_current)
             self.check_tensor("log_twist_prev", log_twist_prev)
 
             log_weight = (
-                log_transition
+                transition_log_ratio
                 + log_twist_current
-                - log_twisted_transition
                 - log_twist_prev
             )
 
