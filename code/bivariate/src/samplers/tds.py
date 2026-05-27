@@ -163,7 +163,7 @@ class TDSSampler:
         # The paper reconstructs the score from the denoising estimate of x_0, we have it directly from model.
         score = model(x_req, t)
 
-        log_twist = self.log_twist(score, x_req, t)
+        log_twist = self.log_twist(score.detach(), x_req, t)
 
         self.check_tensor("score", score)
         self.check_tensor("log_twist_score_approx", log_twist)
