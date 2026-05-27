@@ -23,6 +23,7 @@ class TDSSampler:
         guidance_start=0.0,
         adaptive_resampling=False,
         ess_threshold=1.0,
+        max_guidance_grad_norm=100.0,
     ):
         self.num_particles = num_particles
         self.sde = sde
@@ -81,6 +82,14 @@ class TDSSampler:
         self.guidance_start = guidance_start
         self.adaptive_resampling = adaptive_resampling
         self.ess_threshold = ess_threshold
+        self.max_guidance_grad_norm = max_guidance_grad_norm
+
+        if self.max_guidance_grad_norm is not None:
+            self.max_guidance_grad_norm = float(self.max_guidance_grad_norm)
+            if self.max_guidance_grad_norm <= 0.0:
+                raise ValueError(
+                    "max_guidance_grad_norm must be positive when it is set."
+                )
 
     def init_particles(self, K, num_samples, sample_shape, device) -> torch.Tensor:
         # x^T ~ p(x^T), where p(x^T) is standard normal
@@ -169,6 +178,19 @@ class TDSSampler:
         self.check_tensor("log_twist_score_approx", log_twist)
         
         grad_log_twist = torch.autograd.grad(log_twist.sum(), x_req)[0]
+        if self.max_guidance_grad_norm is not None:
+            grad_log_twist = torch.nan_to_num(
+                grad_log_twist,
+                nan=0.0,
+                posinf=self.max_guidance_grad_norm,
+                neginf=-self.max_guidance_grad_norm,
+            )
+            grad_norm = grad_log_twist.norm(dim=1, keepdim=True)
+            grad_scale = (
+                self.max_guidance_grad_norm / grad_norm.clamp_min(1e-12)
+            ).clamp(max=1.0)
+            grad_log_twist = grad_log_twist * grad_scale
+
         self.check_tensor("grad_log_twist", grad_log_twist)
 
         conditional_score_approx = (score + grad_log_twist).detach()

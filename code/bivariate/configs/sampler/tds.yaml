@@ -6,3 +6,4 @@ guidance_start: 0.5
 resample_type: systematic
 adaptive_resampling: true
 ess_threshold: 0.5
+max_guidance_grad_norm: 100.0

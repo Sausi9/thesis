@@ -109,6 +109,7 @@ def main(cfg: DictConfig):
     resample_type = str(cfg.sampler.resample_type)
     adaptive_resampling = bool(cfg.sampler.adaptive_resampling)
     ess_threshold = float(cfg.sampler.ess_threshold)
+    max_guidance_grad_norm = cfg.sampler.max_guidance_grad_norm
     num_particles = int(cfg.sampler.num_particles)
     num_steps = int(cfg.sampling.num_steps)
     run_label = make_run_label(
@@ -145,6 +146,7 @@ def main(cfg: DictConfig):
             guidance_start = guidance_start,
             adaptive_resampling=adaptive_resampling,
             ess_threshold=ess_threshold,
+            max_guidance_grad_norm=max_guidance_grad_norm,
         )
         samples_batch = tds.sample(model, device, progress=bool(cfg.sampling.progress))
         all_samples.append(samples_batch.detach().cpu())
@@ -163,6 +165,7 @@ def main(cfg: DictConfig):
         "resample_type": resample_type,
         "adaptive_resampling": adaptive_resampling,
         "ess_threshold": ess_threshold,
+        "max_guidance_grad_norm": max_guidance_grad_norm,
         "num_particles": num_particles,
         "num_steps": num_steps,
         "seed": int(cfg.seed),
