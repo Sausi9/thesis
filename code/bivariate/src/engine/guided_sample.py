@@ -63,7 +63,19 @@ def main(cfg: DictConfig) -> None:
     original_var = cfg.dataset.covariance[updated_dim][updated_dim]
     original_marginal = torch.distributions.Normal(original_mean, original_var ** 0.5)
 
-    sampler = GuidedReverseSDESampler(sde, target_marginal, original_marginal, dim, updated_dim, num_samples)
+    guidance_coeff = float(cfg.naive_guidance.guidance_coeff)
+    guidance_start = float(cfg.naive_guidance.guidance_start)
+
+    sampler = GuidedReverseSDESampler(
+        sde,
+        target_marginal,
+        original_marginal,
+        dim,
+        updated_dim,
+        num_samples,
+        guidance_coeff=guidance_coeff,
+        guidance_start=guidance_start,
+    )
 
     samples = sampler.sample(model, cfg.sampling.num_steps, device, True, True)
     run_name = str(payload.get("run_name") or artifact_path.stem)
@@ -71,6 +83,8 @@ def main(cfg: DictConfig) -> None:
     result = {
         "samples": samples.detach().cpu(),
         "sample_type": "naive_guidance",
+        "guidance_coeff": guidance_coeff,
+        "guidance_start": guidance_start,
         "artifact_path": str(artifact_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,

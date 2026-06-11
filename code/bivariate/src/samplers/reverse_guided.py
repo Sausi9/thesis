@@ -11,6 +11,8 @@ class GuidedReverseSDESampler:
         data_dim,
         updated_dim,
         num_samples,
+        guidance_coeff=0.55,
+        guidance_start=0.5,
     ):
         self.sde = sde
         self.target_marginal = target_marginal
@@ -18,6 +20,14 @@ class GuidedReverseSDESampler:
         self.data_dim = data_dim
         self.updated_dim = updated_dim
         self.num_samples = num_samples
+        self.guidance_coeff = float(guidance_coeff)
+
+        if guidance_start is None:
+            raise ValueError("guidance_start must be set.")
+        guidance_start = float(guidance_start)
+        if not 0.0 <= guidance_start < 1.0:
+            raise ValueError(f"guidance_start must be in [0, 1), got {guidance_start}.")
+        self.guidance_start = guidance_start
 
     def log_potential_clean(self, x0: torch.Tensor):
         y = x0[:, self.updated_dim]
@@ -45,6 +55,15 @@ class GuidedReverseSDESampler:
 
         return (score + guidance_coeff * potential_grad).detach()
 
+    def guidance_coeff_at_t(self, t):
+        t_max = self.sde.config.t_max
+        t_min = self.sde.config.t_min
+        progress = ((t_max - t) / (t_max - t_min)).item()
+
+        if progress < self.guidance_start:
+            return 0.0
+        return self.guidance_coeff
+
     # Euler-Maruyama but with updated score for guidance
     def sample(self, model, num_steps, device, return_mean, progress):
         model.eval()
@@ -67,7 +86,7 @@ class GuidedReverseSDESampler:
             t_batch = torch.full((self.num_samples,), t, device=device)
 
             # This score is basically the only difference from version in src/engine/sample.py
-            guidance_coeff = 0.55
+            guidance_coeff = self.guidance_coeff_at_t(t)
             score = self.guided_score(model, x, t_batch, guidance_coeff)
 
             mean, variance = self.sde.reverse_transition_params(

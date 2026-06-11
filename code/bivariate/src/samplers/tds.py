@@ -21,8 +21,9 @@ class TDSSampler:
         resample_type=None,
         guidance_ramp=None,
         guidance_start=0.0,
-        adaptive_resampling = False,
-        ess_threshold = 1.0
+        adaptive_resampling=False,
+        ess_threshold=1.0,
+        max_guidance_grad_norm=100.0,
     ):
         self.num_particles = num_particles
         self.sde = sde
@@ -35,14 +36,31 @@ class TDSSampler:
 
         self.twist_type = twist_type
 
-        self.base_mean = None if base_mean is None else torch.as_tensor(base_mean, dtype=torch.float32)
-        self.base_covariance = None if base_covariance is None else torch.as_tensor(base_covariance, dtype=torch.float32)
-        self.updated_mean = None if updated_mean is None else torch.as_tensor(updated_mean, dtype=torch.float32)
-        self.updated_covariance = None if updated_covariance is None else torch.as_tensor(updated_covariance, dtype=torch.float32)
+        self.base_mean = (
+            None
+            if base_mean is None
+            else torch.as_tensor(base_mean, dtype=torch.float32)
+        )
+        self.base_covariance = (
+            None
+            if base_covariance is None
+            else torch.as_tensor(base_covariance, dtype=torch.float32)
+        )
+        self.updated_mean = (
+            None
+            if updated_mean is None
+            else torch.as_tensor(updated_mean, dtype=torch.float32)
+        )
+        self.updated_covariance = (
+            None
+            if updated_covariance is None
+            else torch.as_tensor(updated_covariance, dtype=torch.float32)
+        )
 
         if self.twist_type == "optimal":
             missing = [
-                name for name, value in {
+                name
+                for name, value in {
                     "base_mean": self.base_mean,
                     "base_covariance": self.base_covariance,
                     "updated_mean": self.updated_mean,
@@ -51,9 +69,7 @@ class TDSSampler:
                 if value is None
             ]
             if missing:
-                raise ValueError(
-                    f"Optimal twist requires: {', '.join(missing)}"
-                )
+                raise ValueError(f"Optimal twist requires: {', '.join(missing)}")
         self.resample_type = resample_type
         self.guidance_ramp = guidance_ramp
         if guidance_start is None:
@@ -61,13 +77,19 @@ class TDSSampler:
 
         guidance_start = float(guidance_start)
         if not 0.0 <= guidance_start < 1.0:
-            raise ValueError(
-                f"guidance_start must be in [0, 1), got {guidance_start}."
-            )
+            raise ValueError(f"guidance_start must be in [0, 1), got {guidance_start}.")
 
         self.guidance_start = guidance_start
         self.adaptive_resampling = adaptive_resampling
         self.ess_threshold = ess_threshold
+        self.max_guidance_grad_norm = max_guidance_grad_norm
+
+        if self.max_guidance_grad_norm is not None:
+            self.max_guidance_grad_norm = float(self.max_guidance_grad_norm)
+            if self.max_guidance_grad_norm <= 0.0:
+                raise ValueError(
+                    "max_guidance_grad_norm must be positive when it is set."
+                )
 
     def init_particles(self, K, num_samples, sample_shape, device) -> torch.Tensor:
         # x^T ~ p(x^T), where p(x^T) is standard normal
@@ -95,20 +117,18 @@ class TDSSampler:
         log_weights = log_twist_flat.reshape(B, K).detach()
         return log_weights
 
-
-
     def systematic_resample(self, particles, log_weights):
         B, K, D = particles.shape
 
         weights = torch.softmax(log_weights, dim=1)  # [B, K]
-        cdf = weights.cumsum(dim=1)                  # [B, K]
+        cdf = weights.cumsum(dim=1)  # [B, K]
         cdf[:, -1] = 1.0
 
         u = torch.rand(B, 1, device=particles.device, dtype=weights.dtype) / K
 
         # K evenly spaced points per batch item.
         offsets = torch.arange(K, device=particles.device, dtype=weights.dtype) / K
-        points = u + offsets[None, :]               # [B, K]
+        points = u + offsets[None, :]  # [B, K]
 
         # For each point, find which CDF bin contains it.
         ancestor_idx = torch.searchsorted(cdf, points, right=False)
@@ -117,11 +137,9 @@ class TDSSampler:
         resampled_particles = particles[batch_idx, ancestor_idx]  # [B, K, D]
 
         return resampled_particles, torch.zeros_like(log_weights)
-    
 
     def multinomial_resample(self, particles, log_weights):
         weights = torch.softmax(log_weights, dim=1)  # [B, K]
-
         ancestor_idx = torch.multinomial(
             weights,
             num_samples=self.num_particles,
@@ -154,11 +172,30 @@ class TDSSampler:
         # The paper reconstructs the score from the denoising estimate of x_0, we have it directly from model.
         score = model(x_req, t)
 
-        log_twist = self.log_twist(score, x_req, t)
+        log_twist = self.log_twist(score.detach(), x_req, t)
 
+        self.check_tensor("score", score)
+        self.check_tensor("log_twist_score_approx", log_twist)
+        
         grad_log_twist = torch.autograd.grad(log_twist.sum(), x_req)[0]
+        if self.max_guidance_grad_norm is not None:
+            grad_log_twist = torch.nan_to_num(
+                grad_log_twist,
+                nan=0.0,
+                posinf=self.max_guidance_grad_norm,
+                neginf=-self.max_guidance_grad_norm,
+            )
+            grad_norm = grad_log_twist.norm(dim=1, keepdim=True)
+            grad_scale = (
+                self.max_guidance_grad_norm / grad_norm.clamp_min(1e-12)
+            ).clamp(max=1.0)
+            grad_log_twist = grad_log_twist * grad_scale
+
+        self.check_tensor("grad_log_twist", grad_log_twist)
 
         conditional_score_approx = (score + grad_log_twist).detach()
+        self.check_tensor("conditional_score_approx", conditional_score_approx)
+
         return conditional_score_approx
 
     # returns proposal which is a x^t_k
@@ -171,6 +208,9 @@ class TDSSampler:
             conditional_score_approx,
             step_size,
         )
+        
+        self.check_tensor("proposal_mean", proposal_mean)
+        self.check_tensor("proposal_var", proposal_var)
 
         proposal_std = torch.sqrt(proposal_var)[:, None]
 
@@ -188,7 +228,9 @@ class TDSSampler:
         t_min = self.sde.config.t_min
         progress = (t_max - t) / (t_max - t_min)
 
-        lambda_delayed_linear = (progress - self.guidance_start) / (1 - self.guidance_start)
+        lambda_delayed_linear = (progress - self.guidance_start) / (
+            1 - self.guidance_start
+        )
 
         return lambda_delayed_linear.clamp(0.0, 1.0)
 
@@ -203,7 +245,6 @@ class TDSSampler:
         if self.guidance_ramp == "delayed_linear":
             return self.guidance_delayed_linear(t)
 
-
     def log_twist(self, score, x_t, t):
         if self.twist_type == "tractable":
             return self.log_tractable_twist(score, x_t, t)
@@ -213,13 +254,42 @@ class TDSSampler:
 
     # returns log of p^*(y)/p(y) i.e. rho(y) in Jeffrey note. Using log allows for subtracting instead of dividing.
     def log_tractable_twist(self, score, x_t, t):
-        x0_hat = self.estimate_x0(x_t, t, score)
+        x0_hat = self.estimate_x0(x_t, t, score).double()
         y_hat = x0_hat[:, self.updated_dim]
 
-        base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
-            y_hat
+        mean_target = torch.as_tensor(
+            self.target_marginal.mean,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
         )
-        return self.guidance_strength(t) * base_log_twist
+        var_target = torch.as_tensor(
+            self.target_marginal.variance,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
+
+        mean_original = torch.as_tensor(
+            self.original_marginal.mean,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
+        var_original = torch.as_tensor(
+            self.original_marginal.variance,
+            device=y_hat.device,
+            dtype=y_hat.dtype,
+        )
+
+        # base_log_twist = self.target_marginal.log_prob(y_hat) - self.original_marginal.log_prob(
+        #     y_hat
+        # )
+        a = 1.0 / var_target - 1.0 / var_original
+        b = -2.0 * mean_target / var_target + 2.0 * mean_original / var_original
+        c = mean_target.square() / var_target - mean_original.square() / var_original
+
+        base_log_twist = -0.5 * (
+            a * y_hat.square() + b * y_hat + c + torch.log(var_target / var_original)
+        )
+        return self.guidance_strength(t).to(dtype=base_log_twist.dtype) * base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
     def log_optimal_twist(self, x_t, t_batch):
@@ -258,46 +328,77 @@ class TDSSampler:
 
         return updated_dist.log_prob(x_t) - base_dist.log_prob(x_t)
 
-
+    def check_tensor(self, name, x):
+        finite = torch.isfinite(x)
+        if not finite.all():
+            num_nan = torch.isnan(x).sum().item()
+            num_posinf = torch.isposinf(x).sum().item()
+            num_neginf = torch.isneginf(x).sum().item()
+            finite_x = x[finite]
+            finite_min = finite_x.min().item() if finite_x.numel() else None
+            finite_max = finite_x.max().item() if finite_x.numel() else None
+            raise FloatingPointError(
+                f"{name} nonfinite: "
+                f"nan={num_nan}, +inf={num_posinf}, -inf={num_neginf}, "
+                f"finite_min={finite_min}, finite_max={finite_max}"
+            )
 
     def log_weight(self, model, x_t, x_prev, t_current, t_prev, step_size):
         with torch.no_grad():
             score_prev = model(x_prev, t_prev)
             score_current = model(x_t, t_current)
 
-            transition_mean_prev, transition_var_prev = self.sde.reverse_transition_params(
-                x_prev, t_prev, score_prev, step_size
+            transition_mean_prev, transition_var_prev = (
+                self.sde.reverse_transition_params(
+                    x_prev, t_prev, score_prev, step_size
+                )
             )
-            transition_dist_prev = torch.distributions.Normal(
-                transition_mean_prev, torch.sqrt(transition_var_prev)[:, None]
-            )
-            # normal reverse log transition
-            log_transition = transition_dist_prev.log_prob(x_t).sum(dim=1)
 
         conditional_score_approx = self.score_approx(model, x_prev, t_prev)
         with torch.no_grad():
-            mean_q, var_q = self.sde.reverse_transition_params(
+            mean_q, _ = self.sde.reverse_transition_params(
                 x_prev, t_prev, conditional_score_approx, step_size
             )
-            twisted_transition_dist = torch.distributions.Normal(
-                mean_q, torch.sqrt(var_q)[:, None]
-            )
-            # log of the twisted reverse transition, which uses the conditional score approx, see Eq.9 in TDS paper.
-            log_twisted_transition = twisted_transition_dist.log_prob(x_t).sum(dim=1)
+
+            mean_diff = (mean_q - transition_mean_prev).double()
+            proposal_residual = (x_t - mean_q).double()
+            transition_var_prev = transition_var_prev.double()
+            # Direct computation of log p(x_t | x_prev) - log q(x_t | x_prev).
+            # Both transitions have the same variance in the VP SDE.
+            transition_log_ratio = -0.5 * (
+                2.0 * (proposal_residual * mean_diff).sum(dim=1)
+                + mean_diff.square().sum(dim=1)
+            ) / transition_var_prev
 
             # current and prev log twists, that is \tilde{p} for t and t+1
             log_twist_current = self.log_twist(score_current, x_t, t_current)
             log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
 
+            self.check_tensor("transition_mean_prev", transition_mean_prev)
+
+            self.check_tensor("mean_q", mean_q)
+            self.check_tensor("mean_diff", mean_diff)
+            self.check_tensor("proposal_residual", proposal_residual)
+            self.check_tensor("transition_var_prev", transition_var_prev)
+
+            self.check_tensor("transition_log_ratio", transition_log_ratio)
+            self.check_tensor("log_twist_current", log_twist_current)
+            self.check_tensor("log_twist_prev", log_twist_prev)
+
             log_weight = (
-                log_transition + log_twist_current - log_twisted_transition - log_twist_prev
+                transition_log_ratio
+                + log_twist_current
+                - log_twist_prev
             )
+
+            self.check_tensor("log_weight", log_weight)
+
         return log_weight.detach()
 
     def ess(self, log_weights):
-        weights = torch.softmax(log_weights, dim = 1) #[B, K]
+        weights = torch.softmax(log_weights, dim=1)  # [B, K]
         squared_weights = weights.pow(2)
-        ess = 1.0 / ((squared_weights.sum(dim=1))) #[B]
+        ess = 1.0 / (squared_weights.sum(dim=1))  # [B]
         return ess
 
     def sample(self, model, device, progress=True):
@@ -321,6 +422,11 @@ class TDSSampler:
             device,
         )
 
+        log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
+        if not torch.isfinite(log_norm).all():
+            raise FloatingPointError("Non-finite initial log norm")
+        log_weights = log_weights - log_norm
+
         timesteps = torch.linspace(
             self.sde.config.t_max,
             self.sde.config.t_min,
@@ -342,8 +448,7 @@ class TDSSampler:
 
             t_prev_flat = torch.full((B * K,), t_prev.item(), device=device)
             t_flat = torch.full((B * K,), t.item(), device=device)
-             
-            
+
             with torch.no_grad():
                 mean_ess = self.ess(log_weights).mean()
                 if self.adaptive_resampling and mean_ess < self.ess_threshold * K:
@@ -355,7 +460,6 @@ class TDSSampler:
 
                 # store the old log_weights or the reset (zero) log_weights in the case where we resample in old_log_weights variable
                 old_log_weights = log_weights.detach()
-
 
             x_prev_flat = particles.reshape(B * K, D)
 
@@ -372,6 +476,10 @@ class TDSSampler:
             particles = x_flat.reshape(B, K, D).detach()
             # this accumulates weights, by adding old_log_weights and the newly computed weights. If we did not resample, then
             log_weights = (old_log_weights + log_incremental_weights_flat).detach()
+            log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
+            if not torch.isfinite(log_norm).all():
+                raise FloatingPointError("Non-finite log norm")
+            log_weights = log_weights - log_norm
 
         # particles: [B, K, D]
         # log_weights: [B, K]
