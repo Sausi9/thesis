@@ -1,0 +1,35 @@
+\chapter{Additional Numerical Details}
+
+\section{Stable Transition Ratio in TDS}
+
+In the implementation of twisted diffusion sampling, the incremental particle weight contains the transition correction
+\begin{equation*}
+    \log p(x^t \mid x^{t+1}) - \log q(x^t \mid x^{t+1}),
+\end{equation*}
+where \(p\) is the original reverse transition and \(q\) is the twisted proposal transition. A direct implementation can compute these two Gaussian log densities separately and subtract them. However, in the VP SDE used here the two transitions have the same variance, since the variance is given by \(\beta(t)\Delta t\) and does not depend on the score. Thus, if \(p = \mathcal{N}(\mu_p, \sigma^2 I)\) and \(q = \mathcal{N}(\mu_q, \sigma^2 I)\), the normalising constants cancel and the transition correction can be written directly as
+\begin{equation*}
+    \log p(x) - \log q(x)
+    =
+    -\frac{1}{2\sigma^2}
+    \left(
+        \|x-\mu_p\|^2 - \|x-\mu_q\|^2
+    \right).
+\end{equation*}
+Since \(x\) is sampled from the proposal \(q\), it is useful to write \(r = x-\mu_q\) and \(d = \mu_q-\mu_p\). Then \(x-\mu_p = r+d\), and the difference of squared norms becomes
+\begin{equation*}
+    \|x-\mu_p\|^2 - \|x-\mu_q\|^2
+    =
+    2r^\top d + \|d\|^2.
+\end{equation*}
+The transition correction is therefore computed as
+\begin{equation*}
+    \log p(x) - \log q(x)
+    =
+    -\frac{1}{2\sigma^2}
+    \left(
+        2(x-\mu_q)^\top(\mu_q-\mu_p)
+        +
+        \|\mu_q-\mu_p\|^2
+    \right).
+\end{equation*}
+This is algebraically equivalent to subtracting the two Gaussian log densities, but is numerically more stable. In particular, it avoids the situation where one transition density underflows to \(-\infty\) before the ratio is formed. This matters in the Jeffrey-guided TDS experiments, where aggressive full-strength guidance can make the twisted proposal move particles far from regions that have appreciable probability under the original reverse transition.
