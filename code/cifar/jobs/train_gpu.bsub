@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#BSUB -q gpua100
+#BSUB -J cifar_train
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/train_%J.out
+#BSUB -e jobs/logs/train_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/train.sh \
+  device=cuda \
+  sampling.progress=true \
+  $EXTRA_OVERRIDES

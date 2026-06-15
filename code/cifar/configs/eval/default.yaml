@@ -1,0 +1,5 @@
+output_dir: runs/evals
+preview_num_samples: 64
+preview_nrow: 8
+bins: 40
+brightness_range: [0.0, 1.0]

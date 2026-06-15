@@ -1,0 +1,7 @@
+enabled: true
+feature: brightness
+source_sample_path: null
+target:
+  type: gaussian
+  mean: 0.65
+  variance: 0.01

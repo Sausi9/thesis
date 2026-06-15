@@ -1,0 +1,9 @@
+_target_: src.models.unet.ScoreUNet
+in_channels: ${dataset.channels}
+out_channels: ${dataset.channels}
+model_channels: 64
+channel_mult: [1, 2, 4]
+time_embed_dim: 256
+dropout: 0.0
+activation: silu
+zero_init_output: true

@@ -1,0 +1,5 @@
+num_epochs: 200
+checkpoint_every: 25
+log_every: 1
+artifacts_dir: artifacts/models
+checkpoints_dir: checkpoints

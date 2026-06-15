@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#BSUB -q gpua100
+#BSUB -J cifar_tds
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/tds_%J.out
+#BSUB -e jobs/logs/tds_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+NUM_SAMPLES="${NUM_SAMPLES:-64}"
+NUM_PARTICLES="${NUM_PARTICLES:-32}"
+NUM_STEPS="${NUM_STEPS:-1000}"
+OUTPUT_NAME="${OUTPUT_NAME:-null}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-null}"
+SOURCE_SAMPLE_PATH="${SOURCE_SAMPLE_PATH:-null}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/tds.sh \
+  device=cuda \
+  sampling.num_samples="$NUM_SAMPLES" \
+  sampler.num_particles="$NUM_PARTICLES" \
+  sampling.num_steps="$NUM_STEPS" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  jeffrey.source_sample_path="$SOURCE_SAMPLE_PATH" \
+  sampling.progress=true \
+  $EXTRA_OVERRIDES

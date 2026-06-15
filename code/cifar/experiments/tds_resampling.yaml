@@ -1,0 +1,34 @@
+name: cifar_tds_resampling
+
+base_overrides:
+  device: cuda
+  sampling.num_samples: 64
+  sampling.batch_size: 2
+  sampling.num_steps: 1000
+  sampler.num_particles: 32
+  sampler.ess_threshold: 0.5
+  sampling.output_name: null
+  sampling.artifact_path: null
+  jeffrey.source_sample_path: null
+  sampling.progress: true
+
+variants:
+  - id: multinomial_always
+    overrides:
+      sampler.resample_type: multinomial
+      sampler.adaptive_resampling: false
+
+  - id: multinomial_adaptive
+    overrides:
+      sampler.resample_type: multinomial
+      sampler.adaptive_resampling: true
+
+  - id: systematic_always
+    overrides:
+      sampler.resample_type: systematic
+      sampler.adaptive_resampling: false
+
+  - id: systematic_adaptive
+    overrides:
+      sampler.resample_type: systematic
+      sampler.adaptive_resampling: true

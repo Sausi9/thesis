@@ -1,0 +1,25 @@
+name: cifar10
+root: data
+channels: 3
+image_size: 32
+shape: [3, 32, 32]
+return_labels: false
+download: true
+
+train:
+  _target_: src.data.dataset.CIFAR10Dataset
+  root: ${dataset.root}
+  split: train
+  download: ${dataset.download}
+  augment: true
+  return_labels: ${dataset.return_labels}
+  max_samples: null
+
+test:
+  _target_: src.data.dataset.CIFAR10Dataset
+  root: ${dataset.root}
+  split: test
+  download: ${dataset.download}
+  augment: false
+  return_labels: ${dataset.return_labels}
+  max_samples: null

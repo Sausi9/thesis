@@ -1,0 +1,14 @@
+artifact_path: null
+artifact_preference: best
+sample_path: null
+num_samples: 64
+batch_size: 8
+num_steps: 1000
+output_dir: runs/samples
+output_name: null
+return_mean: true
+progress: true
+save_preview: true
+preview_dir: runs/previews
+preview_num_samples: 64
+preview_nrow: 8

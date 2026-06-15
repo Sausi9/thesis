@@ -1,0 +1,22 @@
+defaults:
+  - dataset: cifar10
+  - dataloader: default
+  - model: unet
+  - sde: vp
+  - optimizer: adam
+  - jeffrey: brightness
+  - training: default
+  - sampling: default
+  - sampler: tds
+  - eval: default
+  - resume: none
+  - _self_
+
+seed: 67
+device: auto
+run_name: null
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
