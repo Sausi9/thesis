@@ -3,3 +3,21 @@ checkpoint_every: 25
 log_every: 1
 artifacts_dir: artifacts/models
 checkpoints_dir: checkpoints
+ema:
+  enabled: true
+  decay: 0.999
+validation:
+  enabled: true
+  every: 1
+  max_batches: null
+  seed: 1234
+preview:
+  enabled: true
+  every: 5
+  num_samples: 16
+  nrow: 4
+  num_steps: 100
+  seed: 4321
+  output_dir: runs/training_previews
+  weight_type: ema
+  return_mean: true

@@ -79,7 +79,13 @@ def main(cfg: DictConfig) -> None:
 
     payload = torch.load(artifact_path, map_location=device)
     model = instantiate(cfg.model).to(device)
-    model.load_state_dict(load_model_state(payload))
+    requested_weight_type = str(OmegaConf.select(cfg, "sampling.weight_type", default="raw"))
+    model_state, loaded_weight_type = load_model_state(
+        payload,
+        weight_type=requested_weight_type,
+        return_weight_type=True,
+    )
+    model.load_state_dict(model_state)
     model.eval()
     for parameter in model.parameters():
         parameter.requires_grad_(False)
@@ -163,6 +169,8 @@ def main(cfg: DictConfig) -> None:
         "num_steps": num_steps,
         "seed": int(cfg.seed),
         "artifact_path": str(artifact_path),
+        "requested_weight_type": requested_weight_type,
+        "loaded_weight_type": loaded_weight_type,
         "source_sample_path": str(source_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "image_shape": sample_shape,
@@ -196,6 +204,7 @@ def main(cfg: DictConfig) -> None:
         print(f"Saved preview to: {preview_path}")
 
     print(f"Loaded artifact: {artifact_path}")
+    print(f"Loaded weight type: {loaded_weight_type} (requested: {requested_weight_type})")
     print(f"Estimated original brightness marginal from: {source_path}")
     print(f"Saved TDS samples to: {output_path}")
     print(f"Brightness mean: {float(result['brightness_mean']):.6f}")
