@@ -5,6 +5,7 @@ image_size: 32
 shape: [3, 32, 32]
 return_labels: false
 download: true
+preview_split: test
 
 train:
   _target_: src.data.dataset.CIFAR10Dataset
