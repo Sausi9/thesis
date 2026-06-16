@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#BSUB -q gpua100
+#BSUB -J cifar_sample
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/sample_%J.out
+#BSUB -e jobs/logs/sample_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+NUM_SAMPLES="${NUM_SAMPLES:-50000}"
+BATCH_SIZE="${BATCH_SIZE:-64}"
+NUM_STEPS="${NUM_STEPS:-1000}"
+OUTPUT_NAME="${OUTPUT_NAME:-null}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-null}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/sample.sh \
+  device=cuda \
+  sampling.num_samples="$NUM_SAMPLES" \
+  sampling.batch_size="$BATCH_SIZE" \
+  sampling.num_steps="$NUM_STEPS" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  sampling.weight_type=ema \
+  sampling.progress=true \
+  $EXTRA_OVERRIDES

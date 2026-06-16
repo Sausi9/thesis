@@ -3,3 +3,17 @@ preview_num_samples: 64
 preview_nrow: 8
 bins: 40
 brightness_range: [0.0, 1.0]
+fid:
+  enabled: false
+  num_samples: 50000
+  min_samples: 50000
+  reference: cifar10-train
+  batch_size: 64
+  cuda: auto
+  cache_root: runs/fid_cache
+  input_cache_name: null
+  datasets_root: ${dataset.root}
+  datasets_download: ${dataset.download}
+  feature_extractor: inception-v3-compat
+  save_cpu_ram: false
+  verbose: true
