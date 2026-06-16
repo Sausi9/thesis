@@ -3,10 +3,10 @@ __pycache__/
 *.py[cod]
 *.log
 
-data/
-artifacts/
-checkpoints/
-runs/
+/data/
+/artifacts/
+/checkpoints/
+/runs/
 
 jobs/logs/*
 !jobs/logs/.gitkeep
