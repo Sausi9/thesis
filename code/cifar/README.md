@@ -30,3 +30,20 @@ For quick smoke checks, override the heavy defaults, for example:
 ```bash
 uv run python -m src.engine.sample sampling.num_samples=4 sampling.batch_size=2 sampling.num_steps=2
 ```
+
+For a higher-quality unconditional FID estimate, first generate a large sample
+payload and then enable FID in eval:
+
+```bash
+uv run python -m src.engine.sample \
+  sampling.artifact_path=artifacts/models/YOUR_RUN_best.pt \
+  sampling.weight_type=ema \
+  sampling.num_samples=50000 \
+  sampling.batch_size=64 \
+  sampling.num_steps=1000 \
+  sampling.output_name=YOUR_RUN_50k
+
+uv run python -m src.engine.eval \
+  sampling.sample_path=runs/samples/YOUR_RUN_50k.pt \
+  eval.fid.enabled=true
+```

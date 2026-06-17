@@ -92,7 +92,13 @@ def main(cfg: DictConfig) -> None:
 
     payload = torch.load(artifact_path, map_location=device)
     model = instantiate(cfg.model).to(device)
-    model.load_state_dict(load_model_state(payload))
+    requested_weight_type = str(OmegaConf.select(cfg, "sampling.weight_type", default="raw"))
+    model_state, loaded_weight_type = load_model_state(
+        payload,
+        weight_type=requested_weight_type,
+        return_weight_type=True,
+    )
+    model.load_state_dict(model_state)
     sde = instantiate(cfg.sde)
 
     sample_shape = tuple(int(v) for v in cfg.dataset.shape)
@@ -123,6 +129,8 @@ def main(cfg: DictConfig) -> None:
         "samples": samples,
         "sample_type": "model",
         "artifact_path": str(artifact_path),
+        "requested_weight_type": requested_weight_type,
+        "loaded_weight_type": loaded_weight_type,
         "config": OmegaConf.to_container(cfg, resolve=True),
         "image_shape": sample_shape,
         "brightness_mean": brightness_values.mean().detach().cpu(),
@@ -141,6 +149,7 @@ def main(cfg: DictConfig) -> None:
         print(f"Saved preview to: {preview_path}")
 
     print(f"Loaded artifact: {artifact_path}")
+    print(f"Loaded weight type: {loaded_weight_type} (requested: {requested_weight_type})")
     print(f"Saved samples to: {output_path}")
     print(f"Brightness mean: {float(result['brightness_mean']):.6f}")
     print(f"Brightness std: {float(result['brightness_std']):.6f}")

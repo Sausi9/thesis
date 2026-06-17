@@ -69,10 +69,28 @@ def find_latest_sample(samples_dir: Path, sample_type: str | None = None) -> Pat
     raise FileNotFoundError(f"No sample_type={sample_type!r} files found in {samples_dir}.")
 
 
-def load_model_state(payload: dict) -> dict:
-    if "model_state_dict" in payload:
-        return payload["model_state_dict"]
-    raise KeyError("Expected artifact/checkpoint to contain 'model_state_dict'.")
+def load_model_state(
+    payload: dict,
+    weight_type: str = "raw",
+    return_weight_type: bool = False,
+) -> dict | tuple[dict, str]:
+    if weight_type not in {"raw", "ema"}:
+        raise ValueError("weight_type must be one of: raw, ema.")
+
+    if weight_type == "ema" and "ema_state_dict" in payload:
+        state = payload["ema_state_dict"]
+        loaded_weight_type = "ema"
+    else:
+        if "model_state_dict" not in payload:
+            raise KeyError("Expected artifact/checkpoint to contain 'model_state_dict'.")
+        if weight_type == "ema":
+            print("Warning: requested EMA weights, but payload has no ema_state_dict. Using raw weights.")
+        state = payload["model_state_dict"]
+        loaded_weight_type = "raw"
+
+    if return_weight_type:
+        return state, loaded_weight_type
+    return state
 
 
 def make_run_name(cfg: DictConfig, dataset_name: str) -> str:

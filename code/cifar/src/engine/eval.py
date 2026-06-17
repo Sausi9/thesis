@@ -17,6 +17,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from torch.utils.data import Dataset
 
 from src.distributions.targets import (
     GaussianTargetMarginal,
@@ -25,6 +26,27 @@ from src.distributions.targets import (
 )
 from src.jeffrey.brightness import brightness
 from src.utils import find_latest_sample, resolve_path
+
+
+class GeneratedSamplesDataset(Dataset):
+    def __init__(self, samples: torch.Tensor):
+        if samples.ndim != 4:
+            raise ValueError(
+                f"Expected generated samples with shape [N, C, H, W], got {tuple(samples.shape)}."
+            )
+        if samples.shape[1:] != (3, 32, 32):
+            raise ValueError(
+                "FID currently expects CIFAR-shaped samples [N, 3, 32, 32], "
+                f"got {tuple(samples.shape)}."
+            )
+        self.samples = ((samples.detach().cpu().clamp(-1, 1) + 1) * 127.5).round()
+        self.samples = self.samples.clamp(0, 255).to(torch.uint8)
+
+    def __len__(self) -> int:
+        return int(self.samples.shape[0])
+
+    def __getitem__(self, index: int) -> torch.Tensor:
+        return self.samples[index]
 
 
 def load_sample(sample_path: Path | None, samples_dir: Path) -> tuple[dict, Path]:
@@ -124,6 +146,76 @@ def save_brightness_plot(
     plt.close(fig)
 
 
+def resolve_fid_cuda(cfg: DictConfig) -> bool:
+    cuda = str(cfg.eval.fid.cuda)
+    if cuda == "auto":
+        return torch.cuda.is_available()
+    if cuda.lower() in {"true", "1", "yes"}:
+        return True
+    if cuda.lower() in {"false", "0", "no"}:
+        return False
+    raise ValueError("eval.fid.cuda must be one of: auto, true, false.")
+
+
+def compute_fid_metrics(
+    *,
+    samples: torch.Tensor,
+    sample_path: Path,
+    project_root: Path,
+    cfg: DictConfig,
+) -> dict:
+    from torch_fidelity import calculate_metrics
+
+    fid_cfg = cfg.eval.fid
+    requested_num_samples = int(fid_cfg.num_samples)
+    min_samples = int(fid_cfg.min_samples)
+    if requested_num_samples <= 1:
+        raise ValueError("eval.fid.num_samples must be greater than 1.")
+    if min_samples <= 1:
+        raise ValueError("eval.fid.min_samples must be greater than 1.")
+
+    available_samples = int(samples.shape[0])
+    fid_num_samples = min(requested_num_samples, available_samples)
+    if fid_num_samples < min_samples:
+        raise ValueError(
+            "Not enough generated samples for configured FID: "
+            f"available={available_samples}, requested={requested_num_samples}, "
+            f"min_required={min_samples}. Generate more samples or lower eval.fid.min_samples."
+        )
+
+    generated_dataset = GeneratedSamplesDataset(samples[:fid_num_samples])
+    cache_root = resolve_path(project_root, str(fid_cfg.cache_root))
+    cache_root.mkdir(parents=True, exist_ok=True)
+    datasets_root = resolve_path(project_root, str(fid_cfg.datasets_root))
+    input_cache_name = fid_cfg.input_cache_name
+    if input_cache_name is None:
+        input_cache_name = f"{sample_path.stem}-{fid_num_samples}"
+
+    raw_metrics = calculate_metrics(
+        input1=generated_dataset,
+        input2=str(fid_cfg.reference),
+        cuda=resolve_fid_cuda(cfg),
+        batch_size=int(fid_cfg.batch_size),
+        fid=True,
+        cache_root=str(cache_root),
+        cache=True,
+        input1_cache_name=str(input_cache_name),
+        datasets_root=str(datasets_root),
+        datasets_download=bool(fid_cfg.datasets_download),
+        feature_extractor=str(fid_cfg.feature_extractor),
+        save_cpu_ram=bool(fid_cfg.save_cpu_ram),
+        verbose=bool(fid_cfg.verbose),
+    )
+
+    fid = float(raw_metrics["frechet_inception_distance"])
+    return {
+        "fid": fid,
+        "fid_num_samples": fid_num_samples,
+        "fid_reference": str(fid_cfg.reference),
+        "fid_feature_extractor": str(fid_cfg.feature_extractor),
+    }
+
+
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -165,6 +257,15 @@ def main(cfg: DictConfig) -> None:
         metrics["original_mean"] = float(original.loc)
         metrics["original_std"] = float(original.scale)
     metrics.update(histogram_metrics(values, target, bins=bins, value_range=value_range))
+    if bool(cfg.eval.fid.enabled):
+        metrics.update(
+            compute_fid_metrics(
+                samples=samples,
+                sample_path=sample_path,
+                project_root=project_root,
+                cfg=cfg,
+            )
+        )
 
     output_dir = output_dir_for_sample(project_root, cfg, sample_path)
     preview_count = min(int(cfg.eval.preview_num_samples), samples.shape[0])
