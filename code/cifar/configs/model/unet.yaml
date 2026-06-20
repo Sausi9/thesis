@@ -1,9 +1,13 @@
 _target_: src.models.unet.ScoreUNet
 in_channels: ${dataset.channels}
 out_channels: ${dataset.channels}
-model_channels: 64
-channel_mult: [1, 2, 4]
-time_embed_dim: 256
-dropout: 0.0
+image_size: ${dataset.image_size}
+model_channels: 128
+channel_mult: [1, 2, 2, 2]
+num_res_blocks: 2
+attention_resolutions: [16]
+time_embed_dim: 512
+dropout: 0.1
 activation: silu
+skip_rescale: true
 zero_init_output: true

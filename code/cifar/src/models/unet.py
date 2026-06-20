@@ -61,9 +61,11 @@ class ResidualBlock(nn.Module):
         time_dim: int,
         dropout: float,
         activation: str,
+        skip_rescale: bool = False,
     ):
         super().__init__()
         activation_layer = _activation_factory(activation)
+        self.skip_rescale = bool(skip_rescale)
 
         self.norm1 = _group_norm(in_channels)
         self.act1 = activation_layer()
@@ -83,7 +85,10 @@ class ResidualBlock(nn.Module):
         h = self.conv1(self.act1(self.norm1(x)))
         h = h + self.time_proj(t_emb)[:, :, None, None]
         h = self.conv2(self.dropout(self.act2(self.norm2(h))))
-        return h + self.skip(x)
+        out = h + self.skip(x)
+        if self.skip_rescale:
+            return out / math.sqrt(2.0)
+        return out
 
 
 class Downsample(nn.Module):
@@ -105,34 +110,104 @@ class Upsample(nn.Module):
         return self.conv(x)
 
 
+class AttentionBlock(nn.Module):
+    def __init__(self, channels: int, skip_rescale: bool):
+        super().__init__()
+        self.channels = int(channels)
+        self.skip_rescale = bool(skip_rescale)
+        self.norm = _group_norm(self.channels)
+        self.q = nn.Conv2d(self.channels, self.channels, kernel_size=1)
+        self.k = nn.Conv2d(self.channels, self.channels, kernel_size=1)
+        self.v = nn.Conv2d(self.channels, self.channels, kernel_size=1)
+        self.proj = nn.Conv2d(self.channels, self.channels, kernel_size=1)
+        nn.init.zeros_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = x.shape
+        normed = self.norm(x)
+        q = self.q(normed).reshape(b, c, h * w)
+        k = self.k(normed).reshape(b, c, h * w)
+        v = self.v(normed).reshape(b, c, h * w)
+
+        attn = torch.einsum("bcn,bcm->bnm", q, k) * (c ** -0.5)
+        attn = attn.softmax(dim=-1)
+        out = torch.einsum("bnm,bcm->bcn", attn, v).reshape(b, c, h, w)
+        out = self.proj(out)
+        if self.skip_rescale:
+            return (x + out) / math.sqrt(2.0)
+        return x + out
+
+
+class ResBlockWithAttention(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        time_dim: int,
+        dropout: float,
+        activation: str,
+        skip_rescale: bool,
+        use_attention: bool,
+    ):
+        super().__init__()
+        self.block = ResidualBlock(
+            in_channels,
+            out_channels,
+            time_dim,
+            dropout,
+            activation,
+            skip_rescale=skip_rescale,
+        )
+        self.attention = (
+            AttentionBlock(out_channels, skip_rescale=skip_rescale)
+            if use_attention
+            else nn.Identity()
+        )
+
+    def forward(self, x: torch.Tensor, t_emb: torch.Tensor) -> torch.Tensor:
+        h = self.block(x, t_emb)
+        return self.attention(h)
+
+
 class ScoreUNet(nn.Module):
-    """Small time-conditioned U-Net that predicts VP-SDE scores for 32x32 images."""
+    """Stronger CIFAR U-Net with configurable depth and spatial attention."""
 
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        model_channels: int = 64,
-        channel_mult: list[int] | tuple[int, int, int] = (1, 2, 4),
-        time_embed_dim: int = 256,
-        dropout: float = 0.0,
+        image_size: int = 32,
+        model_channels: int = 128,
+        channel_mult: list[int] | tuple[int, ...] = (1, 2, 2, 2),
+        num_res_blocks: int = 2,
+        attention_resolutions: list[int] | tuple[int, ...] = (16,),
+        time_embed_dim: int = 512,
+        dropout: float = 0.1,
         activation: str = "silu",
+        skip_rescale: bool = True,
         zero_init_output: bool = True,
     ):
         super().__init__()
-        if len(channel_mult) != 3:
-            raise ValueError("ScoreUNet expects exactly three channel multipliers.")
+        if len(channel_mult) < 2:
+            raise ValueError("ScoreUNet expects at least two channel multipliers.")
+        if int(num_res_blocks) <= 0:
+            raise ValueError(f"num_res_blocks must be positive, got {num_res_blocks}.")
         if not 0.0 <= float(dropout) < 1.0:
             raise ValueError(f"dropout must be in [0, 1), got {dropout}.")
 
         self.in_channels = int(in_channels)
         self.out_channels = int(out_channels)
+        self.image_size = int(image_size)
         self.model_channels = int(model_channels)
         self.channel_mult = tuple(int(mult) for mult in channel_mult)
+        self.num_res_blocks = int(num_res_blocks)
+        self.attention_resolutions = {
+            int(resolution) for resolution in attention_resolutions
+        }
+        self.skip_rescale = bool(skip_rescale)
 
-        c1, c2, c3 = [self.model_channels * mult for mult in self.channel_mult]
         activation_layer = _activation_factory(activation)
-
         self.time_embed = nn.Sequential(
             SinusoidalTimeEmbedding(time_embed_dim),
             nn.Linear(time_embed_dim, time_embed_dim),
@@ -140,25 +215,94 @@ class ScoreUNet(nn.Module):
             nn.Linear(time_embed_dim, time_embed_dim),
         )
 
-        self.input = nn.Conv2d(self.in_channels, c1, kernel_size=3, padding=1)
-        self.enc1 = ResidualBlock(c1, c1, time_embed_dim, dropout, activation)
-        self.down1 = Downsample(c1)
-        self.enc2 = ResidualBlock(c1, c2, time_embed_dim, dropout, activation)
-        self.down2 = Downsample(c2)
-        self.enc3 = ResidualBlock(c2, c3, time_embed_dim, dropout, activation)
+        channels = [self.model_channels * mult for mult in self.channel_mult]
+        self.input = nn.Conv2d(self.in_channels, channels[0], kernel_size=3, padding=1)
 
-        self.mid1 = ResidualBlock(c3, c3, time_embed_dim, dropout, activation)
-        self.mid2 = ResidualBlock(c3, c3, time_embed_dim, dropout, activation)
+        current_channels = channels[0]
+        current_resolution = self.image_size
+        self.down_blocks = nn.ModuleList()
+        self.downsamples = nn.ModuleList()
+        self.skip_channels: list[int] = []
 
-        self.up2 = Upsample(c3)
-        self.dec2 = ResidualBlock(c3 + c2, c2, time_embed_dim, dropout, activation)
-        self.up1 = Upsample(c2)
-        self.dec1 = ResidualBlock(c2 + c1, c1, time_embed_dim, dropout, activation)
+        for level, out_channels_level in enumerate(channels):
+            blocks = nn.ModuleList()
+            for _ in range(self.num_res_blocks):
+                blocks.append(
+                    ResBlockWithAttention(
+                        current_channels,
+                        out_channels_level,
+                        time_embed_dim,
+                        dropout,
+                        activation,
+                        skip_rescale=self.skip_rescale,
+                        use_attention=current_resolution in self.attention_resolutions,
+                    )
+                )
+                current_channels = out_channels_level
+            self.down_blocks.append(blocks)
+            self.skip_channels.append(current_channels)
+
+            if level != len(channels) - 1:
+                self.downsamples.append(Downsample(current_channels))
+                current_resolution //= 2
+
+        self.mid1 = ResBlockWithAttention(
+            current_channels,
+            current_channels,
+            time_embed_dim,
+            dropout,
+            activation,
+            skip_rescale=self.skip_rescale,
+            use_attention=True,
+        )
+        self.mid2 = ResBlockWithAttention(
+            current_channels,
+            current_channels,
+            time_embed_dim,
+            dropout,
+            activation,
+            skip_rescale=self.skip_rescale,
+            use_attention=False,
+        )
+
+        self.upsamples = nn.ModuleList()
+        self.up_blocks = nn.ModuleList()
+        for level in reversed(range(len(channels) - 1)):
+            current_resolution *= 2
+            self.upsamples.append(Upsample(current_channels))
+            blocks = nn.ModuleList()
+            skip_channels = self.skip_channels[level]
+            out_channels_level = channels[level]
+            blocks.append(
+                ResBlockWithAttention(
+                    current_channels + skip_channels,
+                    out_channels_level,
+                    time_embed_dim,
+                    dropout,
+                    activation,
+                    skip_rescale=self.skip_rescale,
+                    use_attention=current_resolution in self.attention_resolutions,
+                )
+            )
+            current_channels = out_channels_level
+            for _ in range(self.num_res_blocks - 1):
+                blocks.append(
+                    ResBlockWithAttention(
+                        current_channels,
+                        current_channels,
+                        time_embed_dim,
+                        dropout,
+                        activation,
+                        skip_rescale=self.skip_rescale,
+                        use_attention=current_resolution in self.attention_resolutions,
+                    )
+                )
+            self.up_blocks.append(blocks)
 
         self.output = nn.Sequential(
-            _group_norm(c1),
+            _group_norm(current_channels),
             activation_layer(),
-            nn.Conv2d(c1, self.out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(current_channels, self.out_channels, kernel_size=3, padding=1),
         )
 
         if zero_init_output:
@@ -172,6 +316,11 @@ class ScoreUNet(nn.Module):
             raise ValueError(
                 f"Expected {self.in_channels} input channels, got {x.shape[1]}."
             )
+        if x.shape[-2:] != (self.image_size, self.image_size):
+            raise ValueError(
+                f"Expected spatial shape {(self.image_size, self.image_size)}, "
+                f"got {tuple(x.shape[-2:])}."
+            )
         if t.ndim == 0:
             t = t.expand(x.shape[0])
         if t.ndim != 1:
@@ -182,15 +331,22 @@ class ScoreUNet(nn.Module):
             )
 
         t_emb = self.time_embed(t.to(device=x.device, dtype=x.dtype))
+        h = self.input(x)
 
-        h0 = self.input(x)
-        h1 = self.enc1(h0, t_emb)
-        h2 = self.enc2(self.down1(h1), t_emb)
-        h3 = self.enc3(self.down2(h2), t_emb)
+        skips = []
+        for level, blocks in enumerate(self.down_blocks):
+            for block in blocks:
+                h = block(h, t_emb)
+            skips.append(h)
+            if level < len(self.downsamples):
+                h = self.downsamples[level](h)
 
-        h = self.mid2(self.mid1(h3, t_emb), t_emb)
-        h = self.up2(h)
-        h = self.dec2(torch.cat([h, h2], dim=1), t_emb)
-        h = self.up1(h)
-        h = self.dec1(torch.cat([h, h1], dim=1), t_emb)
+        h = self.mid2(self.mid1(h, t_emb), t_emb)
+
+        for upsample, blocks, skip in zip(self.upsamples, self.up_blocks, reversed(skips[:-1])):
+            h = upsample(h)
+            h = torch.cat([h, skip], dim=1)
+            for block in blocks:
+                h = block(h, t_emb)
+
         return self.output(h)
