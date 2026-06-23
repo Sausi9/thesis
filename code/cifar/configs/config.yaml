@@ -9,6 +9,7 @@ defaults:
   - sampling: default
   - sampler: tds
   - eval: default
+  - ratio: default
   - resume: none
   - _self_
 
