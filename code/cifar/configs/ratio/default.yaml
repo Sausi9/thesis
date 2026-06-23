@@ -1,0 +1,27 @@
+feature_extractor: inception-v3-compat
+feature_layer: "2048"
+batch_size: 64
+num_workers: 2
+pin_memory: false
+datasets_root: data
+datasets_download: true
+
+real_split: train
+real_max_samples: null
+generated_sample_path: null
+generated_max_samples: null
+
+embedding_dir: artifacts/embeddings
+real_embedding_path: null
+generated_embedding_path: null
+
+classifier_dir: artifacts/ratio_classifiers
+classifier:
+  embedding_dim: 2048
+  epochs: 15
+  lr: 0.001
+  weight_decay: 0.0
+  batch_size: 256
+  val_fraction: 0.1
+  seed: 123
+  output_name: null
