@@ -88,6 +88,37 @@ def optional_positive_int(value) -> int | None:
     return value
 
 
+def optional_positive_float(value) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    if value <= 0.0:
+        raise ValueError(f"Expected a positive float or null, got {value}.")
+    return value
+
+
+def apply_linear_warmup(optimizer, *, global_step: int, warmup_steps: int) -> float:
+    """Apply Score-SDE-style linear learning-rate warmup."""
+    if warmup_steps <= 0:
+        return float(optimizer.param_groups[0]["lr"])
+
+    scale = min(float(global_step + 1) / float(warmup_steps), 1.0)
+    active_lr = 0.0
+    for group in optimizer.param_groups:
+        base_lr = group.setdefault("base_lr", group["lr"])
+        group["lr"] = float(base_lr) * scale
+        active_lr = float(group["lr"])
+    return active_lr
+
+
+def ensure_optimizer_base_lrs(optimizer, configured_lr: float | None = None) -> None:
+    for group in optimizer.param_groups:
+        if "base_lr" not in group:
+            group["base_lr"] = (
+                float(configured_lr) if configured_lr is not None else float(group["lr"])
+            )
+
+
 @torch.no_grad()
 def evaluate_loss(
     *,
@@ -195,6 +226,11 @@ def main(cfg: DictConfig) -> None:
     model = instantiate(cfg.model).to(device)
     sde = instantiate(cfg.sde)
     optimizer = instantiate(cfg.optimizer, params=model.parameters())
+    configured_lr = OmegaConf.select(cfg, "optimizer.lr", default=None)
+    ensure_optimizer_base_lrs(
+        optimizer,
+        configured_lr=float(configured_lr) if configured_lr is not None else None,
+    )
 
     artifact_dir = project_root / str(cfg.training.artifacts_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -202,6 +238,14 @@ def main(cfg: DictConfig) -> None:
     num_epochs = int(cfg.training.num_epochs)
     checkpoint_every = int(cfg.training.checkpoint_every)
     log_every = int(cfg.training.log_every)
+    warmup_steps = int(
+        OmegaConf.select(cfg, "training.optimization.warmup_steps", default=0)
+    )
+    if warmup_steps < 0:
+        raise ValueError(f"training.optimization.warmup_steps must be >= 0, got {warmup_steps}.")
+    grad_clip_norm = optional_positive_float(
+        OmegaConf.select(cfg, "training.optimization.grad_clip_norm", default=None)
+    )
     ema_enabled = bool(OmegaConf.select(cfg, "training.ema.enabled", default=False))
     ema_decay = float(OmegaConf.select(cfg, "training.ema.decay", default=0.999))
     validation_enabled = bool(
@@ -234,6 +278,10 @@ def main(cfg: DictConfig) -> None:
 
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        ensure_optimizer_base_lrs(
+            optimizer,
+            configured_lr=float(configured_lr) if configured_lr is not None else None,
+        )
         if ema_enabled:
             ema = ExponentialMovingAverage(model, ema_decay)
             if "ema_state_dict" in checkpoint:
@@ -279,6 +327,17 @@ def main(cfg: DictConfig) -> None:
             optimizer.zero_grad(set_to_none=True)
             loss = score_matching_loss(model, sde, x0)
             loss.backward()
+            active_lr = apply_linear_warmup(
+                optimizer,
+                global_step=global_step,
+                warmup_steps=warmup_steps,
+            )
+            grad_norm = None
+            if grad_clip_norm is not None:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(),
+                    max_norm=grad_clip_norm,
+                )
             optimizer.step()
             if ema is not None:
                 ema.update(model)
@@ -289,15 +348,22 @@ def main(cfg: DictConfig) -> None:
             global_step += 1
 
             if log_every > 0 and global_step % log_every == 0:
-                pbar.set_postfix(
-                    step_loss=f"{loss_val:.4f}",
-                    epoch_avg=f"{epoch_loss / num_steps:.4f}",
-                )
+                postfix = {
+                    "step_loss": f"{loss_val:.4f}",
+                    "epoch_avg": f"{epoch_loss / num_steps:.4f}",
+                    "lr": f"{active_lr:.2e}",
+                }
+                if grad_norm is not None:
+                    postfix["grad_norm"] = f"{float(grad_norm):.2f}"
+                pbar.set_postfix(**postfix)
 
         epoch_avg = epoch_loss / max(num_steps, 1)
         metrics = {
             "epoch_avg_loss": epoch_avg,
             "best_loss": min(best_loss, epoch_avg),
+            "learning_rate": float(optimizer.param_groups[0]["lr"]),
+            "warmup_steps": warmup_steps,
+            "grad_clip_norm": grad_clip_norm,
         }
 
         if validation_enabled and should_run_epoch_task(epoch, validation_every):

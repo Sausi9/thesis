@@ -3,9 +3,12 @@ checkpoint_every: 25
 log_every: 1
 artifacts_dir: artifacts/models
 checkpoints_dir: checkpoints
+optimization:
+  warmup_steps: 5000
+  grad_clip_norm: 1.0
 ema:
   enabled: true
-  decay: 0.999
+  decay: 0.9999
 validation:
   enabled: true
   every: 1
