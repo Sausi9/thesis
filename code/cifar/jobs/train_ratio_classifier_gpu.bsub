@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_ratio
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 16GB
+#BSUB -W 4:00
+#BSUB -o jobs/logs/ratio_%J.out
+#BSUB -e jobs/logs/ratio_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+REAL_EMBEDDING_PATH="${REAL_EMBEDDING_PATH:-null}"
+GENERATED_EMBEDDING_PATH="${GENERATED_EMBEDDING_PATH:-null}"
+OUTPUT_NAME="${OUTPUT_NAME:-best_model_inception_ratio}"
+EPOCHS="${EPOCHS:-15}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/train_ratio_classifier.sh \
+  device=cuda \
+  ratio.real_embedding_path="$REAL_EMBEDDING_PATH" \
+  ratio.generated_embedding_path="$GENERATED_EMBEDDING_PATH" \
+  ratio.classifier.output_name="$OUTPUT_NAME" \
+  ratio.classifier.epochs="$EPOCHS" \
+  $EXTRA_OVERRIDES

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_embed
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/embed_%J.out
+#BSUB -e jobs/logs/embed_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+GENERATED_SAMPLE_PATH="${GENERATED_SAMPLE_PATH:-null}"
+BATCH_SIZE="${BATCH_SIZE:-128}"
+NUM_WORKERS="${NUM_WORKERS:-4}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/extract_embeddings.sh \
+  device=cuda \
+  ratio.generated_sample_path="$GENERATED_SAMPLE_PATH" \
+  ratio.batch_size="$BATCH_SIZE" \
+  ratio.num_workers="$NUM_WORKERS" \
+  ratio.pin_memory=true \
+  $EXTRA_OVERRIDES
