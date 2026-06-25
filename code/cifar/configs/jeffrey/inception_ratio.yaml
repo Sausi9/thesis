@@ -1,0 +1,8 @@
+enabled: true
+feature: inception_ratio
+ratio_classifier_path: artifacts/ratio_classifiers/best_model_inception_ratio/classifier.pt
+feature_extractor: inception-v3-compat
+feature_layer: "2048"
+preprocessing: continuous
+guidance_scale: 1.0
+logit_clip: 20.0

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_inc_eval
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 16GB
+#BSUB -W 4:00
+#BSUB -o jobs/logs/inception_eval_%J.out
+#BSUB -e jobs/logs/inception_eval_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+SAMPLE_PATH="${SAMPLE_PATH:-null}"
+RATIO_CLASSIFIER_PATH="${RATIO_CLASSIFIER_PATH:-artifacts/ratio_classifiers/best_model_inception_ratio/classifier.pt}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/eval_inception_ratio.sh \
+  device=cuda \
+  jeffrey=inception_ratio \
+  sampling.sample_path="$SAMPLE_PATH" \
+  jeffrey.ratio_classifier_path="$RATIO_CLASSIFIER_PATH" \
+  $EXTRA_OVERRIDES
