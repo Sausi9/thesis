@@ -8,6 +8,7 @@ defaults:
   - training: default
   - sampling: default
   - sampler: tds
+  - naive_guidance: default
   - eval: default
   - ratio: default
   - resume: none

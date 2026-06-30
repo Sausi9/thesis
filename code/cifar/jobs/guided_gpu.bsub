@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_guided
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/guided_%J.out
+#BSUB -e jobs/logs/guided_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+NUM_SAMPLES="${NUM_SAMPLES:-64}"
+BATCH_SIZE="${BATCH_SIZE:-8}"
+NUM_STEPS="${NUM_STEPS:-1000}"
+GUIDANCE_COEFF="${GUIDANCE_COEFF:-1.0}"
+GUIDANCE_START="${GUIDANCE_START:-0.5}"
+OUTPUT_NAME="${OUTPUT_NAME:-null}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-null}"
+SOURCE_SAMPLE_PATH="${SOURCE_SAMPLE_PATH:-null}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/guided.sh \
+  device=cuda \
+  sampling.num_samples="$NUM_SAMPLES" \
+  sampling.batch_size="$BATCH_SIZE" \
+  sampling.num_steps="$NUM_STEPS" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  jeffrey.source_sample_path="$SOURCE_SAMPLE_PATH" \
+  naive_guidance.guidance_coeff="$GUIDANCE_COEFF" \
+  naive_guidance.guidance_start="$GUIDANCE_START" \
+  sampling.progress=true \
+  $EXTRA_OVERRIDES

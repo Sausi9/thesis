@@ -1,0 +1,3 @@
+guidance_coeff: 1.0
+guidance_start: 0.5
+max_guidance_grad_norm: 100.0
