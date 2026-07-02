@@ -168,14 +168,26 @@ class TDSSampler:
         )
         return lambda_delayed_linear.clamp(0.0, 1.0)
 
+    def guidance_delayed_discrete(self, t):
+        t_max = self.sde.config.t_max
+        t_min = self.sde.config.t_min
+        progress = (t_max - t) / (t_max - t_min)
+        return torch.where(
+            progress < self.guidance_start,
+            torch.zeros_like(t),
+            torch.ones_like(t),
+        )
+
     def guidance_strength(self, t):
         if self.guidance_ramp is None:
             return torch.ones_like(t)
-        if self.guidance_ramp not in ("linear", "delayed_linear"):
+        if self.guidance_ramp not in ("linear", "delayed_linear", "delayed_discrete"):
             raise ValueError(f"Unsupported guidance ramp {self.guidance_ramp}")
         if self.guidance_ramp == "linear":
             return self.guidance_linear(t)
-        return self.guidance_delayed_linear(t)
+        if self.guidance_ramp == "delayed_linear":
+            return self.guidance_delayed_linear(t)
+        return self.guidance_delayed_discrete(t)
 
     def log_twist(self, score, x_t, t):
         x0_hat = self.estimate_x0(x_t, t, score)

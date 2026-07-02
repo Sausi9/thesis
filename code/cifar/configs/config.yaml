@@ -9,6 +9,7 @@ defaults:
   - sampling: default
   - sampler: tds
   - naive_guidance: default
+  - ddim: default
   - eval: default
   - ratio: default
   - resume: none

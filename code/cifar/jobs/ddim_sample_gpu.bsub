@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_ddim_sample
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/ddim_sample_%J.out
+#BSUB -e jobs/logs/ddim_sample_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+NUM_SAMPLES="${NUM_SAMPLES:-50000}"
+BATCH_SIZE="${BATCH_SIZE:-64}"
+TIMESTEPS="${TIMESTEPS:-100}"
+ETA="${ETA:-0.2}"
+OUTPUT_NAME="${OUTPUT_NAME:-ddim_official_50k}"
+CHECKPOINT_NAME="${CHECKPOINT_NAME:-ema_cifar10}"
+CHECKPOINT_PATH="${CHECKPOINT_PATH:-null}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/sample.sh \
+  device=cuda \
+  sampling.backend=ddim \
+  sampling.num_samples="$NUM_SAMPLES" \
+  sampling.batch_size="$BATCH_SIZE" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.progress=true \
+  ddim.timesteps="$TIMESTEPS" \
+  ddim.eta="$ETA" \
+  ddim.checkpoint_name="$CHECKPOINT_NAME" \
+  ddim.checkpoint_path="$CHECKPOINT_PATH" \
+  $EXTRA_OVERRIDES

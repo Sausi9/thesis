@@ -1,3 +1,4 @@
+backend: score_sde
 artifact_path: null
 artifact_preference: best
 weight_type: ema

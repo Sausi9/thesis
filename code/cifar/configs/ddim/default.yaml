@@ -1,0 +1,25 @@
+checkpoint_name: ema_cifar10
+checkpoint_path: null
+cache_dir: null
+download: true
+check_md5: true
+
+timesteps: 100
+eta: 0.2
+skip_type: uniform
+batch_size: ${sampling.batch_size}
+
+image_size: ${dataset.image_size}
+in_channels: ${dataset.channels}
+out_channels: ${dataset.channels}
+ch: 128
+ch_mult: [1, 2, 2, 2]
+num_res_blocks: 2
+attn_resolutions: [16]
+dropout: 0.1
+resamp_with_conv: true
+model_type: simple
+
+num_diffusion_timesteps: 1000
+beta_start: 0.0001
+beta_end: 0.02
