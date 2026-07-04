@@ -1,0 +1,10 @@
+output_dir: runs/sweeps/brightness_tds
+output_name: null
+num_samples_per_setting: 250
+guidance_scales: [0.5, 1.0, 2.0, 4.0]
+guidance_starts: [0.2, 0.3, 0.4, 0.5]
+guidance_ramp: delayed_discrete
+target_mean: 0.8
+target_variance: 0.01
+save_samples: false
+save_previews: true

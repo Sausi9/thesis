@@ -30,6 +30,7 @@ def load_model_samples(sample_path: Path) -> torch.Tensor:
 
 def make_run_label(
     twist_type: str,
+    guidance_scale: float,
     guidance_ramp: str | None,
     guidance_start: float,
     resample_type: str,
@@ -42,7 +43,7 @@ def make_run_label(
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
     ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
     return (
-        f"{twist_type}{ramp}_guidance_start_{guidance_start}_"
+        f"{twist_type}_scale{guidance_scale:g}{ramp}_guidance_start_{guidance_start}_"
         f"{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
     )
 
@@ -105,6 +106,7 @@ def main(cfg: DictConfig) -> None:
     target_marginal = build_target_marginal(cfg.jeffrey.target)
 
     twist_type = str(cfg.sampler.twist_type)
+    guidance_scale = float(cfg.sampler.guidance_scale)
     guidance_ramp = cfg.sampler.guidance_ramp
     guidance_start = float(cfg.sampler.guidance_start)
     resample_type = str(cfg.sampler.resample_type)
@@ -116,6 +118,7 @@ def main(cfg: DictConfig) -> None:
     sample_shape = tuple(int(v) for v in cfg.dataset.shape)
     run_label = make_run_label(
         twist_type,
+        guidance_scale,
         guidance_ramp,
         guidance_start,
         resample_type,
@@ -138,6 +141,7 @@ def main(cfg: DictConfig) -> None:
             original_marginal=original_marginal,
             num_steps=num_steps,
             twist_type=twist_type,
+            guidance_scale=guidance_scale,
             resample_type=resample_type,
             guidance_ramp=guidance_ramp,
             guidance_start=guidance_start,
@@ -159,6 +163,7 @@ def main(cfg: DictConfig) -> None:
         "sample_type": "tds",
         "run_label": run_label,
         "twist_type": twist_type,
+        "guidance_scale": guidance_scale,
         "guidance_ramp": guidance_ramp,
         "guidance_start": guidance_start,
         "resample_type": resample_type,

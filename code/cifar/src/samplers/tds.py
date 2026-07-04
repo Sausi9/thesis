@@ -16,6 +16,7 @@ class TDSSampler:
         original_marginal,
         num_steps,
         twist_type="brightness",
+        guidance_scale=1.0,
         resample_type=None,
         guidance_ramp=None,
         guidance_start=0.0,
@@ -33,6 +34,7 @@ class TDSSampler:
         self.twist_type = str(twist_type)
         if self.twist_type != "brightness":
             raise ValueError(f"Unsupported twist type {self.twist_type}")
+        self.guidance_scale = float(guidance_scale)
 
         self.resample_type = resample_type
         self.guidance_ramp = guidance_ramp
@@ -195,7 +197,8 @@ class TDSSampler:
         target_log_prob = self.target_marginal.log_prob(y_hat)
         original_log_prob = self._normal_log_prob(self.original_marginal, y_hat)
         base_log_twist = target_log_prob - original_log_prob
-        return self.guidance_strength(t).to(dtype=base_log_twist.dtype) * base_log_twist
+        strength = self.guidance_strength(t).to(dtype=base_log_twist.dtype)
+        return self.guidance_scale * strength * base_log_twist
 
     @staticmethod
     def _normal_log_prob(marginal, value):

@@ -10,6 +10,7 @@ defaults:
   - sampler: tds
   - naive_guidance: default
   - ddim: default
+  - sweep: brightness_tds
   - eval: default
   - ratio: default
   - resume: none
