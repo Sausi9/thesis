@@ -1,0 +1,10 @@
+output_dir: runs/sweeps/brightness_naive_guidance
+output_name: null
+num_samples_per_setting: 250
+guidance_coeffs: [0.5, 1.0, 2.0, 4.0]
+guidance_starts: [0.2, 0.3, 0.4, 0.5]
+target_mean: 0.8
+target_variance: 0.01
+save_samples: false
+save_previews: true
+
