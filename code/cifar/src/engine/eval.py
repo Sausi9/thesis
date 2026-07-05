@@ -103,6 +103,36 @@ def normal_pdf(x: torch.Tensor, mean: float, std: float) -> torch.Tensor:
     return torch.exp(dist.log_prob(x))
 
 
+def brightness_plot_range(
+    values: torch.Tensor,
+    target,
+    original,
+    base_range: tuple[float, float],
+) -> tuple[float, float]:
+    lower, upper = base_range
+    candidates = [float(lower), float(upper)]
+
+    finite_values = values.detach().float()
+    finite_values = finite_values[torch.isfinite(finite_values)]
+    if finite_values.numel() > 0:
+        candidates.extend([float(finite_values.min()), float(finite_values.max())])
+
+    for marginal in (target, original):
+        if marginal is None:
+            continue
+        mean_value = marginal.mean if hasattr(marginal, "mean") else marginal.loc
+        std_value = marginal.std if hasattr(marginal, "std") else marginal.scale
+        mean = float(mean_value)
+        std = float(std_value)
+        candidates.extend([mean - 4.0 * std, mean + 4.0 * std])
+
+    plot_lower = min(candidates)
+    plot_upper = max(candidates)
+    width = max(plot_upper - plot_lower, 1e-6)
+    padding = 0.03 * width
+    return plot_lower - padding, plot_upper + padding
+
+
 def save_brightness_plot(
     values: torch.Tensor,
     target,
@@ -111,12 +141,13 @@ def save_brightness_plot(
     bins: int,
     value_range: tuple[float, float],
 ) -> None:
-    x = torch.linspace(value_range[0], value_range[1], 400)
+    plot_range = brightness_plot_range(values, target, original, value_range)
+    x = torch.linspace(plot_range[0], plot_range[1], 400)
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
     ax.hist(
         values.numpy(),
         bins=bins,
-        range=value_range,
+        range=plot_range,
         density=True,
         alpha=0.55,
         color="#2563eb",
@@ -140,7 +171,7 @@ def save_brightness_plot(
         )
     ax.set_xlabel("brightness")
     ax.set_ylabel("density")
-    ax.set_xlim(*value_range)
+    ax.set_xlim(*plot_range)
     ax.legend(frameon=False)
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
