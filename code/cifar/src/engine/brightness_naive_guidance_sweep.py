@@ -117,7 +117,7 @@ def save_plot(rows: list[dict], path: Path, original_mean: float, target_mean: f
         linewidth=1.2,
         label=f"model mean={original_mean:.3f}",
     )
-    ax.set_xlabel("guidance coefficient")
+    ax.set_xlabel("guidance scale")
     ax.set_ylabel("sample brightness mean")
     ax.set_title("Brightness naive guidance sweep")
     ax.grid(alpha=0.25)
@@ -331,4 +331,3 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     main()
-

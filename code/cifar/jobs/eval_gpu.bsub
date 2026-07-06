@@ -19,10 +19,14 @@ cd "$LS_SUBCWD"
 mkdir -p jobs/logs
 
 SAMPLE_PATH="${SAMPLE_PATH:-null}"
+FID_NUM_SAMPLES="${FID_NUM_SAMPLES:-10000}"
+FID_MIN_SAMPLES="${FID_MIN_SAMPLES:-10000}"
 EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
 
 bash jobs/eval.sh \
   sampling.sample_path="$SAMPLE_PATH" \
   eval.fid.enabled=true \
   eval.fid.cuda=true \
+  eval.fid.num_samples="$FID_NUM_SAMPLES" \
+  eval.fid.min_samples="$FID_MIN_SAMPLES" \
   $EXTRA_OVERRIDES

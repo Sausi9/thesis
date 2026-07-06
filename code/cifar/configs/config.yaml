@@ -13,6 +13,7 @@ defaults:
   - sweep: brightness_tds
   - eval: default
   - ratio: default
+  - merge: default
   - resume: none
   - _self_
 

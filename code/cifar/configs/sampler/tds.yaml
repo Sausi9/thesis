@@ -2,7 +2,7 @@ name: tds
 num_particles: 8
 twist_type: brightness
 guidance_scale: 1.0
-guidance_ramp: delayed_linear
+guidance_ramp: delayed_discrete
 guidance_start: 0.5
 resample_type: systematic
 adaptive_resampling: true

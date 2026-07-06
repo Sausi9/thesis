@@ -14,3 +14,5 @@ save_preview: true
 preview_dir: runs/previews
 preview_num_samples: 64
 preview_nrow: 8
+resume: false
+save_every_batches: 1

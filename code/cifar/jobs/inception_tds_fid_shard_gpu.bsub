@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#BSUB -q gpua100
+#BSUB -J cifar_inc_fid
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/inception_tds_fid_shard_%J.out
+#BSUB -e jobs/logs/inception_tds_fid_shard_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+GUIDANCE_START="${GUIDANCE_START:-0.4}"
+GUIDANCE_SCALE="${GUIDANCE_SCALE:-0.25}"
+SHARD_INDEX="${SHARD_INDEX:-0}"
+SHARD_SAMPLES="${SHARD_SAMPLES:-3334}"
+NUM_PARTICLES="${NUM_PARTICLES:-4}"
+BATCH_SIZE="${BATCH_SIZE:-64}"
+NUM_STEPS="${NUM_STEPS:-1000}"
+GUIDANCE_RAMP="${GUIDANCE_RAMP:-delayed_discrete}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-null}"
+RATIO_CLASSIFIER_PATH="${RATIO_CLASSIFIER_PATH:-artifacts/ratio_classifiers/best_model_inception_ratio/classifier.pt}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+shard_number=$((10#$SHARD_INDEX))
+shard_label="$(printf "%02d" "$shard_number")"
+safe_start="${GUIDANCE_START//./p}"
+safe_start="${safe_start//-/m}"
+safe_scale="${GUIDANCE_SCALE//./p}"
+safe_scale="${safe_scale//-/m}"
+
+OUTPUT_NAME="${OUTPUT_NAME:-inc_tds_fid_start${safe_start}_scale${safe_scale}_shard${shard_label}}"
+SEED="${SEED:-$((670000 + shard_number))}"
+
+bash jobs/inception_tds.sh \
+  device=cuda \
+  jeffrey=inception_ratio \
+  sampling.num_samples="$SHARD_SAMPLES" \
+  sampling.batch_size="$BATCH_SIZE" \
+  sampler.num_particles="$NUM_PARTICLES" \
+  sampling.num_steps="$NUM_STEPS" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  jeffrey.ratio_classifier_path="$RATIO_CLASSIFIER_PATH" \
+  jeffrey.guidance_scale="$GUIDANCE_SCALE" \
+  sampler.guidance_start="$GUIDANCE_START" \
+  sampler.guidance_ramp="$GUIDANCE_RAMP" \
+  sampling.resume=true \
+  sampling.save_every_batches=1 \
+  sampling.progress=true \
+  seed="$SEED" \
+  $EXTRA_OVERRIDES

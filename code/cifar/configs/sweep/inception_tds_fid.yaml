@@ -1,0 +1,7 @@
+output_dir: runs/sweeps/inception_tds_fid
+output_name: null
+eval_dir: runs/evals
+sample_name_template: inc_tds_fid_start{start}_scale{scale}_10k
+guidance_starts: [0.4, 0.6, 0.8]
+guidance_scales: [0.25, 0.5, 1.0, 2.0]
+unguided_fid: 7.48
