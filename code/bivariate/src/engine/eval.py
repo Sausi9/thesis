@@ -74,6 +74,7 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
 
     cfg_dict = OmegaConf.to_container(sample_cfg, resolve=True)
     twist_type = get_nested(cfg_dict, ("sampler", "twist_type"), "unknown")
+    guidance_scale = get_nested(cfg_dict, ("sampler", "guidance_scale"), 1.0)
     guidance_ramp = get_nested(cfg_dict, ("sampler", "guidance_ramp"), None)
     guidance_start = get_nested(cfg_dict, ("sampler", "guidance_start"), None)
     resample_type = get_nested(cfg_dict, ("sampler", "resample_type"), "unknown")
@@ -85,7 +86,10 @@ def build_run_label(payload: dict, sample_cfg: DictConfig) -> str:
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling is True else ""
     ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
     start = "" if guidance_start is None else f"_guidance_start_{guidance_start}"
-    return f"{twist_type}{ramp}{start}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    return (
+        f"{twist_type}_scale{guidance_scale:g}{ramp}{start}_"
+        f"{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    )
 
 
 def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -> list[str]:
@@ -104,6 +108,10 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
         guidance_ramp = payload.get(
             "guidance_ramp",
             get_nested(cfg_dict, ("sampler", "guidance_ramp"), None),
+        )
+        guidance_scale = payload.get(
+            "guidance_scale",
+            get_nested(cfg_dict, ("sampler", "guidance_scale"), 1.0),
         )
         guidance_start = payload.get(
             "guidance_start",
@@ -135,6 +143,7 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
         lines.extend(
             [
                 f"twist = {twist_type}",
+                f"guidance scale = {guidance_scale}",
                 f"guidance ramp = {guidance_ramp}",
                 f"guidance start = {guidance_start}",
                 f"resample = {resample_type}",
@@ -143,6 +152,38 @@ def build_info_lines(payload: dict, sample_cfg: DictConfig, sample_path: Path) -
                 f"K = {num_particles}",
                 f"steps = {num_steps}",
                 f"seed = {seed}",
+            ]
+        )
+
+    if sample_type == "naive_guidance":
+        guidance_scale = payload.get(
+            "guidance_scale",
+            payload.get(
+                "guidance_coeff",
+                get_nested(
+                    cfg_dict,
+                    ("naive_guidance", "guidance_scale"),
+                    get_nested(
+                        cfg_dict,
+                        ("naive_guidance", "guidance_coeff"),
+                        "unknown",
+                    ),
+                ),
+            ),
+        )
+        guidance_start = payload.get(
+            "guidance_start",
+            get_nested(cfg_dict, ("naive_guidance", "guidance_start"), "unknown"),
+        )
+        num_steps = payload.get(
+            "num_steps",
+            get_nested(cfg_dict, ("sampling", "num_steps"), "?"),
+        )
+        lines.extend(
+            [
+                f"guidance scale = {guidance_scale}",
+                f"guidance start = {guidance_start}",
+                f"steps = {num_steps}",
             ]
         )
 
