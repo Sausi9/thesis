@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #BSUB -q gpua100
-#BSUB -J bivariate_mean6_calibration
+#BSUB -J bivariate_mean6_confirmation
 #BSUB -n 4
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -M 16GB
 #BSUB -W 24:00
-#BSUB -o jobs/logs/mean6_guidance_calibration_%J.out
-#BSUB -e jobs/logs/mean6_guidance_calibration_%J.err
+#BSUB -o jobs/logs/mean6_guidance_confirmation_%J.out
+#BSUB -e jobs/logs/mean6_guidance_confirmation_%J.err
 #BSUB -u s242762@dtu.dk
 #BSUB -B
 #BSUB -N
@@ -18,19 +18,19 @@ set -euo pipefail
 cd "$LS_SUBCWD"
 mkdir -p jobs/logs
 
-# Experiment settings. Edit this block before submission if a different matching
-# model/source pair or output identity is required.
+# These identities must match the completed calibration job.
 ARTIFACT_PATH="artifacts/models/bivariate_gaussian_20260504_122838_best.pt"
 SOURCE_SAMPLE_PATH="runs/samples/bivariate_gaussian_20260504_122838_model_samples_20260504_134847.pt"
-OUTPUT_NAME="mean6_guidance_calibration"
+CALIBRATION_RESULTS_PATH="runs/sweeps/guidance/mean6_guidance_calibration/results.json"
+OUTPUT_NAME="mean6_guidance_confirmation"
 RESUME="false"
 
 bash jobs/guidance_sweep.sh \
   device=cuda \
-  sweep.stage=calibration \
+  sweep.stage=confirmation \
   sweep.output_name="$OUTPUT_NAME" \
   sweep.resume="$RESUME" \
-  sweep.calibration_results_path=null \
+  sweep.calibration_results_path="$CALIBRATION_RESULTS_PATH" \
   'sweep.methods=[naive_guidance,tds]' \
   'sweep.target_means=[6.0]' \
   sweep.target_variance=0.25 \

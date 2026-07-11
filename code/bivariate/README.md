@@ -45,10 +45,19 @@ uv run python -m src.engine.guidance_sweep \
   sweep.output_name=guidance_confirmation
 ```
 
-For LSF, export `ARTIFACT_PATH`, `SOURCE_SAMPLE_PATH`, and a unique
-`OUTPUT_NAME`, then submit `jobs/guidance_sweep_gpu.bsub`. Set `STAGE=confirmation`
-and `CALIBRATION_RESULTS_PATH` for the confirmation run. No job is submitted by
-the sweep command itself.
+The LSF jobs are self-contained and require no exported shell variables. Review
+the settings blocks near the top of each file, then submit calibration and
+confirmation respectively:
+
+```bash
+bsub < jobs/guidance_sweep_gpu.bsub
+bsub < jobs/guidance_sweep_confirmation_gpu.bsub
+```
+
+The committed defaults run only the mean-6 target with the matching local 20260504
+artifact/source pair. To resume either output, change its `RESUME` assignment to
+`true` without changing any other scientific setting. No job is submitted by the
+sweep Python command itself.
 
 ## TDS Resampling Sweep
 
