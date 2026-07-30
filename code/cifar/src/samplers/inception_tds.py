@@ -55,13 +55,34 @@ class InceptionTDSSampler:
             device,
         )
 
-    def init_weights(self, init_particles, init_t_batch_flat, model) -> torch.Tensor:
+    def init_weights(
+        self,
+        init_particles,
+        init_t_batch_flat,
+        model,
+        *,
+        guidance_active=None,
+    ) -> torch.Tensor:
         B, K = init_particles.shape[:2]
+        if guidance_active is None:
+            guidance_active = self.guidance_is_active(init_t_batch_flat)
+        if not guidance_active:
+            return torch.zeros(
+                (B, K),
+                device=init_particles.device,
+                dtype=init_particles.dtype,
+            )
+
         x_T_flat = init_particles.reshape(B * K, *self.sample_shape)
 
         with torch.no_grad():
             score = model(x_T_flat, init_t_batch_flat)
-            log_twist_flat = self.log_twist(score, x_T_flat, init_t_batch_flat)
+            log_twist_flat = self.log_twist(
+                score,
+                x_T_flat,
+                init_t_batch_flat,
+                guidance_active=True,
+            )
 
         return log_twist_flat.reshape(B, K).detach()
 
@@ -103,10 +124,23 @@ class InceptionTDSSampler:
         sigma2 = 1.0 - torch.exp(-self.sde.beta_integral(t))
         return (x_t + batch_view(sigma2, x_t) * score) / batch_view(alpha, x_t)
 
-    def score_approx(self, model, x_t, t):
+    def score_approx(self, model, x_t, t, *, guidance_active=None):
+        if guidance_active is None:
+            guidance_active = self.guidance_is_active(t)
+        if not guidance_active:
+            with torch.no_grad():
+                score = model(x_t, t)
+            self.check_tensor("score", score)
+            return score.detach()
+
         x_req = x_t.detach().requires_grad_(True)
         score = model(x_req, t)
-        log_twist = self.log_twist(score.detach(), x_req, t)
+        log_twist = self.log_twist(
+            score.detach(),
+            x_req,
+            t,
+            guidance_active=True,
+        )
 
         self.check_tensor("score", score)
         self.check_tensor("log_twist_score_approx", log_twist)
@@ -130,8 +164,21 @@ class InceptionTDSSampler:
         self.check_tensor("conditional_score_approx", conditional_score_approx)
         return conditional_score_approx
 
-    def proposal(self, model, x_prev, t_prev, step_size):
-        conditional_score_approx = self.score_approx(model, x_prev, t_prev)
+    def proposal(
+        self,
+        model,
+        x_prev,
+        t_prev,
+        step_size,
+        *,
+        guidance_active=None,
+    ):
+        conditional_score_approx = self.score_approx(
+            model,
+            x_prev,
+            t_prev,
+            guidance_active=guidance_active,
+        )
         proposal_mean, proposal_var = self.sde.reverse_transition_params(
             x_prev,
             t_prev,
@@ -180,7 +227,24 @@ class InceptionTDSSampler:
             return self.guidance_delayed_linear(t)
         return self.guidance_delayed_discrete(t)
 
-    def log_twist(self, score, x_t, t):
+    def guidance_activity(self, t):
+        if self.guidance_scale == 0.0:
+            return torch.zeros_like(t, dtype=torch.bool)
+        return self.guidance_strength(t).ne(0)
+
+    def guidance_is_active(self, t) -> bool:
+        return bool(self.guidance_activity(t).any().item())
+
+    def log_twist(self, score, x_t, t, *, guidance_active=None):
+        if guidance_active is None:
+            guidance_active = self.guidance_is_active(t)
+        if not guidance_active:
+            return torch.zeros(
+                x_t.shape[0],
+                device=x_t.device,
+                dtype=x_t.dtype,
+            )
+
         x0_hat = self.estimate_x0(x_t, t, score)
         base_log_twist = self.ratio_potential(x0_hat)
         strength = self.guidance_strength(t).to(dtype=base_log_twist.dtype)
@@ -201,7 +265,30 @@ class InceptionTDSSampler:
                 f"finite_min={finite_min}, finite_max={finite_max}"
             )
 
-    def log_weight(self, model, x_t, x_prev, t_current, t_prev, step_size):
+    def log_weight(
+        self,
+        model,
+        x_t,
+        x_prev,
+        t_current,
+        t_prev,
+        step_size,
+        *,
+        current_guidance_active=None,
+        prev_guidance_active=None,
+    ):
+        if current_guidance_active is None:
+            current_guidance_active = self.guidance_is_active(t_current)
+        if prev_guidance_active is None:
+            prev_guidance_active = self.guidance_is_active(t_prev)
+        if not current_guidance_active and not prev_guidance_active:
+            # With both twists zero, the proposal equals the base transition.
+            return torch.zeros(
+                x_t.shape[0],
+                device=x_t.device,
+                dtype=torch.float64,
+            )
+
         with torch.no_grad():
             score_prev = model(x_prev, t_prev)
             score_current = model(x_t, t_current)
@@ -214,7 +301,12 @@ class InceptionTDSSampler:
                 )
             )
 
-        conditional_score_approx = self.score_approx(model, x_prev, t_prev)
+        conditional_score_approx = self.score_approx(
+            model,
+            x_prev,
+            t_prev,
+            guidance_active=prev_guidance_active,
+        )
         with torch.no_grad():
             mean_q, _ = self.sde.reverse_transition_params(
                 x_prev,
@@ -232,8 +324,18 @@ class InceptionTDSSampler:
             norm = mean_diff.square().sum(dim=reduce_dims)
             transition_log_ratio = -0.5 * (2.0 * cross + norm) / transition_var_prev
 
-            log_twist_current = self.log_twist(score_current, x_t, t_current)
-            log_twist_prev = self.log_twist(score_prev, x_prev, t_prev)
+            log_twist_current = self.log_twist(
+                score_current,
+                x_t,
+                t_current,
+                guidance_active=current_guidance_active,
+            )
+            log_twist_prev = self.log_twist(
+                score_prev,
+                x_prev,
+                t_prev,
+                guidance_active=prev_guidance_active,
+            )
 
             self.check_tensor("transition_log_ratio", transition_log_ratio)
             self.check_tensor("log_twist_current", log_twist_current)
@@ -254,23 +356,29 @@ class InceptionTDSSampler:
         B = self.num_samples
         particles = self.init_particles(B, device)
 
-        init_t_batch_flat = torch.full(
-            (B * K,),
-            self.sde.config.t_max,
-            device=device,
-        )
-        log_weights = self.init_weights(particles, init_t_batch_flat, model)
-        log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
-        if not torch.isfinite(log_norm).all():
-            raise FloatingPointError("Non-finite initial log norm")
-        log_weights = log_weights - log_norm
-
         timesteps = torch.linspace(
             self.sde.config.t_max,
             self.sde.config.t_min,
             self.num_steps + 1,
             device=device,
         )
+        guidance_activity = self.guidance_activity(timesteps).detach().cpu().tolist()
+
+        init_t_batch_flat = torch.full(
+            (B * K,),
+            self.sde.config.t_max,
+            device=device,
+        )
+        log_weights = self.init_weights(
+            particles,
+            init_t_batch_flat,
+            model,
+            guidance_active=guidance_activity[0],
+        )
+        log_norm = torch.logsumexp(log_weights, dim=1, keepdim=True)
+        if not torch.isfinite(log_norm).all():
+            raise FloatingPointError("Non-finite initial log norm")
+        log_weights = log_weights - log_norm
 
         iterator = range(self.num_steps)
         if progress:
@@ -280,6 +388,8 @@ class InceptionTDSSampler:
             t_prev = timesteps[i]
             t = timesteps[i + 1]
             step_size = t_prev - t
+            prev_guidance_active = guidance_activity[i]
+            current_guidance_active = guidance_activity[i + 1]
 
             t_prev_flat = torch.full((B * K,), t_prev.item(), device=device)
             t_flat = torch.full((B * K,), t.item(), device=device)
@@ -293,7 +403,13 @@ class InceptionTDSSampler:
                 old_log_weights = log_weights.detach()
 
             x_prev_flat = particles.reshape(B * K, *self.sample_shape)
-            x_flat = self.proposal(model, x_prev_flat, t_prev_flat, step_size)
+            x_flat = self.proposal(
+                model,
+                x_prev_flat,
+                t_prev_flat,
+                step_size,
+                guidance_active=prev_guidance_active,
+            )
             log_incremental_weights_flat = self.log_weight(
                 model,
                 x_flat,
@@ -301,6 +417,8 @@ class InceptionTDSSampler:
                 t_flat,
                 t_prev_flat,
                 step_size,
+                current_guidance_active=current_guidance_active,
+                prev_guidance_active=prev_guidance_active,
             ).reshape(B, K)
 
             particles = x_flat.reshape(B, K, *self.sample_shape).detach()
