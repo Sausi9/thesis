@@ -64,6 +64,7 @@ def save_results_csv(rows: list[dict], path: Path) -> None:
 
 def save_plot(rows: list[dict], path: Path, unguided_fid: float | None) -> None:
     starts = sorted({float(row["guidance_start"]) for row in rows})
+    scales = sorted({float(row["guidance_scale"]) for row in rows})
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
 
     for guidance_start in starts:
@@ -97,6 +98,12 @@ def save_plot(rows: list[dict], path: Path, unguided_fid: float | None) -> None:
     ax.set_xlabel("guidance scale")
     ax.set_ylabel("FID")
     ax.set_title("Inception TDS FID sweep")
+    x_min, x_max = ax.get_xlim()
+    automatic_ticks = [
+        float(tick) for tick in ax.get_xticks() if x_min <= float(tick) <= x_max
+    ]
+    x_ticks = sorted({round(tick, 10) for tick in automatic_ticks + scales})
+    ax.set_xticks(x_ticks, labels=[f"{tick:g}" for tick in x_ticks])
     ax.grid(alpha=0.25)
     ax.legend(frameon=False)
     fig.savefig(path, dpi=200)

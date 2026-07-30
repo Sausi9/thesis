@@ -38,7 +38,7 @@ safe_scale="${GUIDANCE_SCALE//./p}"
 safe_scale="${safe_scale//-/m}"
 
 OUTPUT_NAME="${OUTPUT_NAME:-inc_tds_fid_start${safe_start}_scale${safe_scale}_shard${shard_label}}"
-SEED="${SEED:-$((670000 + shard_number))}"
+SEED="${SEED:-$((670000 + shard_number * 100000))}"
 
 bash jobs/inception_tds.sh \
   device=cuda \
