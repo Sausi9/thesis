@@ -199,7 +199,7 @@ def save_analysis(
         unguided_samples=unguided_samples,
         pixel_l2=pixel_l2,
         indices=top_indices,
-        output_path=output_dir / "top4_pixel_l2_pairs.png",
+        output_path=output_dir / f"top{top_k}_pixel_l2_pairs.png",
         ranked=True,
     )
     save_pair_grid(
