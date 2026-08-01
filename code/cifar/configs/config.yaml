@@ -14,6 +14,7 @@ defaults:
   - eval: default
   - ratio: default
   - merge: default
+  - paired: default
   - resume: none
   - _self_
 
