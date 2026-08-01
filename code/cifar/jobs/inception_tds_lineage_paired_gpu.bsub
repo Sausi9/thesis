@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_inc_tds_lineage_pairs
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/inception_tds_lineage_paired_%J.out
+#BSUB -e jobs/logs/inception_tds_lineage_paired_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+NUM_SAMPLES="${NUM_SAMPLES:-256}"
+BATCH_SIZE="${BATCH_SIZE:-32}"
+NUM_PARTICLES="${NUM_PARTICLES:-4}"
+NUM_STEPS="${NUM_STEPS:-1000}"
+GUIDANCE_SCALE="${GUIDANCE_SCALE:-1.5}"
+GUIDANCE_START="${GUIDANCE_START:-0.95}"
+GUIDANCE_RAMP="${GUIDANCE_RAMP:-delayed_discrete}"
+TOP_K="${TOP_K:-4}"
+SEED="${SEED:-670000}"
+OUTPUT_NAME="${OUTPUT_NAME:-vp_sde_inception_tds_lineage_paired_start0p95_scale1p5_K4}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-checkpoints/cifar10_20260624_015342/best.pt}"
+RATIO_CLASSIFIER_PATH="${RATIO_CLASSIFIER_PATH:-artifacts/ratio_classifiers/best_model_inception_ratio/classifier.pt}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/inception_tds_lineage_paired.sh \
+  device=cuda \
+  jeffrey=inception_ratio \
+  sampling.num_samples="$NUM_SAMPLES" \
+  sampling.batch_size="$BATCH_SIZE" \
+  sampler.num_particles="$NUM_PARTICLES" \
+  sampling.num_steps="$NUM_STEPS" \
+  sampling.output_name="$OUTPUT_NAME" \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  jeffrey.ratio_classifier_path="$RATIO_CLASSIFIER_PATH" \
+  jeffrey.guidance_scale="$GUIDANCE_SCALE" \
+  sampler.guidance_start="$GUIDANCE_START" \
+  sampler.guidance_ramp="$GUIDANCE_RAMP" \
+  paired.top_k="$TOP_K" \
+  sampling.resume=true \
+  sampling.save_every_batches=1 \
+  sampling.progress=true \
+  seed="$SEED" \
+  $EXTRA_OVERRIDES

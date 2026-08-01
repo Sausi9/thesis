@@ -1,7 +1,3 @@
-import csv
-import json
-import os
-import tempfile
 from pathlib import Path
 
 import hydra
@@ -9,15 +5,7 @@ import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
-cache_root = Path(tempfile.gettempdir()) / "cifar_paired_tds_cache"
-cache_root.mkdir(parents=True, exist_ok=True)
-os.environ.setdefault("MPLCONFIGDIR", str(cache_root / "matplotlib"))
-
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
+from src.engine.inception_tds_paired_sample import pixel_distances, save_analysis
 from src.engine.inception_tds_sample import (
     atomic_torch_save,
     ensure_resume_compatible,
@@ -25,7 +13,9 @@ from src.engine.inception_tds_sample import (
     optional_float,
 )
 from src.jeffrey.inception_ratio import InceptionRatioPotential, compute_ratio_logits
-from src.samplers.paired_inception_tds import PairedInceptionTDSSampler
+from src.samplers.lineage_replay_inception_tds import (
+    LineageReplayInceptionTDSSampler,
+)
 from src.utils import (
     find_latest_artifact,
     load_model_state,
@@ -35,25 +25,14 @@ from src.utils import (
 )
 
 
-PAIRING_SEMANTICS = (
-    "shared_initial_particles_shared_transition_noise_"
-    "guided_resampling_ancestry_shared_final_selection"
-)
+PAIRING_SEMANTICS = "selected_lineage_unguided_replay"
 PAIRING_CAVEAT = (
-    "Unguided images are coupled counterfactual counterparts. They are not "
-    "independent unconditional samples because guided TDS determines their "
-    "resampling ancestry and final particle selection."
+    "Unguided images follow ordinary VP-SDE transitions with no particles, "
+    "weights, or resampling. Their starting lineage and replayed Gaussian "
+    "increments are selected by guided TDS, so they are counterfactual "
+    "counterparts rather than independent unconditional samples."
 )
-
-
-def display_space(samples: torch.Tensor) -> torch.Tensor:
-    return (samples.clamp(-1, 1) + 1.0) / 2.0
-
-
-def pixel_distances(guided: torch.Tensor, unguided: torch.Tensor):
-    difference = display_space(guided) - display_space(unguided)
-    flattened = difference.flatten(1)
-    return flattened.norm(dim=1), flattened.square().mean(dim=1)
+RNG_SCHEME = "four_stream_batch_seed_v1"
 
 
 def make_output_path(
@@ -65,7 +44,7 @@ def make_output_path(
     return timestamped_output_path(
         output_dir=resolve_path(project_root, str(cfg.sampling.output_dir)),
         output_name=cfg.sampling.output_name,
-        default_stem=f"{run_name}_paired_inception_tds_{run_label}",
+        default_stem=f"{run_name}_lineage_paired_inception_tds_{run_label}",
         extension=".pt",
     )
 
@@ -75,7 +54,10 @@ def make_payload(
     guided_samples: torch.Tensor,
     unguided_samples: torch.Tensor,
     selected_particle_indices: torch.Tensor,
+    selected_boundary_indices: torch.Tensor,
     batch_resampling_steps: list[int],
+    batch_replay_start_steps: list[int],
+    batch_replay_num_steps: list[int],
     complete: bool,
     num_completed: int,
     num_batches_completed: int,
@@ -92,17 +74,25 @@ def make_payload(
     unguided_ratio_logits: torch.Tensor | None = None,
 ) -> dict:
     guided_cpu = guided_samples.detach().cpu()
-    unguided_cpu = unguided_samples.detach().cpu()
     payload = {
         "samples": guided_cpu,
         "guided_samples": guided_cpu,
-        "unguided_samples": unguided_cpu,
+        "unguided_samples": unguided_samples.detach().cpu(),
         "selected_particle_indices": selected_particle_indices.detach().cpu().long(),
+        "selected_boundary_indices": selected_boundary_indices.detach().cpu().long(),
         "batch_resampling_steps": [int(value) for value in batch_resampling_steps],
-        "sample_type": "inception_tds_paired",
+        "batch_replay_start_steps": [
+            int(value) for value in batch_replay_start_steps
+        ],
+        "batch_replay_num_steps": [int(value) for value in batch_replay_num_steps],
+        "sample_type": "inception_tds_lineage_paired",
         "pairing_semantics": PAIRING_SEMANTICS,
         "pairing_caveat": PAIRING_CAVEAT,
+        "unguided_uses_particles": False,
+        "unguided_uses_weights": False,
+        "unguided_uses_resampling": False,
         "unguided_counterparts_are_independent": False,
+        "rng_scheme": RNG_SCHEME,
         "complete": bool(complete),
         "num_completed": int(num_completed),
         "num_batches_completed": int(num_batches_completed),
@@ -140,138 +130,6 @@ def make_payload(
     return payload
 
 
-def save_pair_grid(
-    *,
-    guided_samples: torch.Tensor,
-    unguided_samples: torch.Tensor,
-    pixel_l2: torch.Tensor,
-    indices: torch.Tensor,
-    output_path: Path,
-    ranked: bool,
-) -> None:
-    count = int(indices.numel())
-    if count == 0:
-        return
-    guided = display_space(guided_samples[indices]).permute(0, 2, 3, 1).numpy()
-    unguided = display_space(unguided_samples[indices]).permute(0, 2, 3, 1).numpy()
-    fig, axes = plt.subplots(
-        2,
-        count,
-        figsize=(2.35 * count, 4.8),
-        squeeze=False,
-        constrained_layout=True,
-    )
-    for column, pair_index in enumerate(indices.tolist()):
-        axes[0, column].imshow(unguided[column])
-        axes[1, column].imshow(guided[column])
-        prefix = f"rank {column + 1}, " if ranked else ""
-        axes[0, column].set_title(
-            f"{prefix}pair {pair_index}\nL2={float(pixel_l2[pair_index]):.3f}",
-            fontsize=10,
-        )
-        axes[0, column].axis("off")
-        axes[1, column].axis("off")
-    fig.text(0.005, 0.73, "unguided counterpart", rotation=90, va="center")
-    fig.text(0.005, 0.27, "guided TDS", rotation=90, va="center")
-    fig.savefig(output_path, dpi=200)
-    plt.close(fig)
-
-
-def save_analysis(
-    *,
-    output_dir: Path,
-    guided_samples: torch.Tensor,
-    unguided_samples: torch.Tensor,
-    pixel_l2: torch.Tensor,
-    pixel_mse: torch.Tensor,
-    guided_logits: torch.Tensor,
-    unguided_logits: torch.Tensor,
-    top_k: int,
-    preview_pairs: int,
-    pairing_semantics: str = PAIRING_SEMANTICS,
-    pairing_caveat: str = PAIRING_CAVEAT,
-) -> dict:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ranking = torch.argsort(pixel_l2, descending=True)
-    top_indices = ranking[:top_k]
-    preview_indices = torch.arange(min(preview_pairs, guided_samples.shape[0]))
-    top_figure_path = output_dir / f"top{top_k}_pixel_l2_pairs.png"
-    for stale_path in output_dir.glob("top*_pixel_l2_pairs.png"):
-        if stale_path != top_figure_path:
-            stale_path.unlink()
-
-    save_pair_grid(
-        guided_samples=guided_samples,
-        unguided_samples=unguided_samples,
-        pixel_l2=pixel_l2,
-        indices=top_indices,
-        output_path=top_figure_path,
-        ranked=True,
-    )
-    save_pair_grid(
-        guided_samples=guided_samples,
-        unguided_samples=unguided_samples,
-        pixel_l2=pixel_l2,
-        indices=preview_indices,
-        output_path=output_dir / "paired_preview.png",
-        ranked=False,
-    )
-
-    fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
-    ax.hist(pixel_l2.numpy(), bins=40, color="#2563eb", alpha=0.72)
-    ax.set_xlabel("paired pixel-space L2 distance")
-    ax.set_ylabel("count")
-    fig.savefig(output_dir / "pixel_difference_histogram.png", dpi=180)
-    plt.close(fig)
-
-    with (output_dir / "ranking.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(
-            [
-                "rank",
-                "pair_index",
-                "pixel_l2",
-                "pixel_mse",
-                "unguided_ratio_logit",
-                "guided_ratio_logit",
-                "ratio_logit_change",
-            ]
-        )
-        for rank, pair_index in enumerate(ranking.tolist(), start=1):
-            writer.writerow(
-                [
-                    rank,
-                    pair_index,
-                    float(pixel_l2[pair_index]),
-                    float(pixel_mse[pair_index]),
-                    float(unguided_logits[pair_index]),
-                    float(guided_logits[pair_index]),
-                    float(guided_logits[pair_index] - unguided_logits[pair_index]),
-                ]
-            )
-
-    metrics = {
-        "num_pairs": int(guided_samples.shape[0]),
-        "pairing_semantics": pairing_semantics,
-        "pairing_caveat": pairing_caveat,
-        "pixel_l2_mean": float(pixel_l2.mean()),
-        "pixel_l2_std": float(pixel_l2.std(unbiased=pixel_l2.numel() > 1)),
-        "pixel_l2_min": float(pixel_l2.min()),
-        "pixel_l2_max": float(pixel_l2.max()),
-        "pixel_mse_mean": float(pixel_mse.mean()),
-        "unguided_ratio_logit_mean": float(unguided_logits.mean()),
-        "guided_ratio_logit_mean": float(guided_logits.mean()),
-        "ratio_logit_change_mean": float((guided_logits - unguided_logits).mean()),
-        "top_pair_indices": [int(value) for value in top_indices.tolist()],
-        "top_pair_pixel_l2": [
-            float(pixel_l2[index]) for index in top_indices.tolist()
-        ],
-    }
-    with (output_dir / "metrics.json").open("w", encoding="utf-8") as handle:
-        json.dump(metrics, handle, indent=2)
-    return metrics
-
-
 @hydra.main(version_base=None, config_path="../../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -280,9 +138,9 @@ def main(cfg: DictConfig) -> None:
     torch.manual_seed(base_seed)
 
     if str(cfg.jeffrey.feature) != "inception_ratio":
-        raise ValueError("Paired sampling requires jeffrey=inception_ratio.")
+        raise ValueError("Lineage pairing requires jeffrey=inception_ratio.")
     if str(cfg.sampling.backend) != "score_sde":
-        raise ValueError("Paired Inception TDS only supports sampling.backend=score_sde.")
+        raise ValueError("Lineage pairing only supports sampling.backend=score_sde.")
 
     artifact_dir = project_root / str(cfg.training.artifacts_dir)
     artifact_path = (
@@ -355,6 +213,7 @@ def main(cfg: DictConfig) -> None:
 
     resume_compatibility = {
         "pairing_semantics": PAIRING_SEMANTICS,
+        "rng_scheme": RNG_SCHEME,
         "artifact_path": str(artifact_path),
         "ratio_classifier_path": str(ratio_classifier_path),
         "guidance_scale": float(cfg.jeffrey.guidance_scale),
@@ -383,20 +242,25 @@ def main(cfg: DictConfig) -> None:
 
     all_guided = []
     all_unguided = []
-    all_selected_indices = []
+    all_selected = []
+    all_boundary = []
     batch_resampling_steps = []
+    batch_replay_start_steps = []
+    batch_replay_num_steps = []
     num_completed = 0
     num_batches_completed = 0
+
     if resume_enabled and output_path.exists():
         existing = torch.load(output_path, map_location="cpu")
         ensure_resume_compatible(existing, resume_compatibility, output_path)
         guided = existing["guided_samples"].detach().cpu()
         unguided = existing["unguided_samples"].detach().cpu()
         selected = existing["selected_particle_indices"].detach().cpu()
+        boundary = existing["selected_boundary_indices"].detach().cpu()
         if guided.shape != unguided.shape or tuple(guided.shape[1:]) != sample_shape:
-            raise ValueError("Resume file contains incompatible paired sample tensors.")
-        if selected.shape != (guided.shape[0],):
-            raise ValueError("Resume file contains incompatible selected indices.")
+            raise ValueError("Resume file contains incompatible paired tensors.")
+        if selected.shape != (guided.shape[0],) or boundary.shape != selected.shape:
+            raise ValueError("Resume file contains incompatible lineage indices.")
         if guided.shape[0] > target_num_samples:
             raise ValueError("Resume file contains more pairs than requested.")
         num_completed = int(existing.get("num_completed", guided.shape[0]))
@@ -405,15 +269,21 @@ def main(cfg: DictConfig) -> None:
         num_batches_completed = int(existing.get("num_batches_completed", 0))
         all_guided.append(guided)
         all_unguided.append(unguided)
-        all_selected_indices.append(selected)
+        all_selected.append(selected)
+        all_boundary.append(boundary)
         batch_resampling_steps.extend(existing.get("batch_resampling_steps", []))
-        print(f"Resuming paired samples: {num_completed}/{target_num_samples}")
+        batch_replay_start_steps.extend(
+            existing.get("batch_replay_start_steps", [])
+        )
+        batch_replay_num_steps.extend(existing.get("batch_replay_num_steps", []))
+        print(f"Resuming lineage pairs: {num_completed}/{target_num_samples}")
 
     remaining = target_num_samples - num_completed
     while remaining > 0:
         batch_n = min(batch_size, remaining)
-        torch.manual_seed(base_seed + num_batches_completed)
-        sampler = PairedInceptionTDSSampler(
+        batch_seed = base_seed + num_batches_completed
+        sampler = LineageReplayInceptionTDSSampler(
+            seed=batch_seed,
             num_particles=int(cfg.sampler.num_particles),
             sde=sde,
             num_samples=batch_n,
@@ -435,10 +305,11 @@ def main(cfg: DictConfig) -> None:
         )
         all_guided.append(result["guided_samples"].detach().cpu())
         all_unguided.append(result["unguided_samples"].detach().cpu())
-        all_selected_indices.append(
-            result["selected_particle_indices"].detach().cpu()
-        )
+        all_selected.append(result["selected_particle_indices"].detach().cpu())
+        all_boundary.append(result["selected_boundary_indices"].detach().cpu())
         batch_resampling_steps.append(int(result["resampling_steps"]))
+        batch_replay_start_steps.append(int(result["replay_start_step"]))
+        batch_replay_num_steps.append(int(result["replay_num_steps"]))
         remaining -= batch_n
         num_completed += batch_n
         num_batches_completed += 1
@@ -446,15 +317,15 @@ def main(cfg: DictConfig) -> None:
         if resume_enabled and (
             num_batches_completed % save_every_batches == 0 or remaining == 0
         ):
-            partial_guided = torch.cat(all_guided)
-            partial_unguided = torch.cat(all_unguided)
-            partial_selected = torch.cat(all_selected_indices)
             atomic_torch_save(
                 make_payload(
-                    guided_samples=partial_guided,
-                    unguided_samples=partial_unguided,
-                    selected_particle_indices=partial_selected,
+                    guided_samples=torch.cat(all_guided),
+                    unguided_samples=torch.cat(all_unguided),
+                    selected_particle_indices=torch.cat(all_selected),
+                    selected_boundary_indices=torch.cat(all_boundary),
                     batch_resampling_steps=batch_resampling_steps,
+                    batch_replay_start_steps=batch_replay_start_steps,
+                    batch_replay_num_steps=batch_replay_num_steps,
                     complete=False,
                     num_completed=num_completed,
                     num_batches_completed=num_batches_completed,
@@ -468,11 +339,12 @@ def main(cfg: DictConfig) -> None:
                 ),
                 output_path,
             )
-            print(f"Saved resumable paired progress: {num_completed}/{target_num_samples}")
+            print(f"Saved resumable lineage pairs: {num_completed}/{target_num_samples}")
 
     guided_samples = torch.cat(all_guided)
     unguided_samples = torch.cat(all_unguided)
-    selected_indices = torch.cat(all_selected_indices)
+    selected_indices = torch.cat(all_selected)
+    boundary_indices = torch.cat(all_boundary)
     pixel_l2, pixel_mse = pixel_distances(guided_samples, unguided_samples)
     guided_logits = compute_ratio_logits(
         potential=ratio_potential,
@@ -491,7 +363,10 @@ def main(cfg: DictConfig) -> None:
         guided_samples=guided_samples,
         unguided_samples=unguided_samples,
         selected_particle_indices=selected_indices,
+        selected_boundary_indices=boundary_indices,
         batch_resampling_steps=batch_resampling_steps,
+        batch_replay_start_steps=batch_replay_start_steps,
+        batch_replay_num_steps=batch_replay_num_steps,
         complete=True,
         num_completed=int(guided_samples.shape[0]),
         num_batches_completed=num_batches_completed,
@@ -518,13 +393,15 @@ def main(cfg: DictConfig) -> None:
         unguided_logits=unguided_logits,
         top_k=top_k,
         preview_pairs=preview_pairs,
+        pairing_semantics=PAIRING_SEMANTICS,
+        pairing_caveat=PAIRING_CAVEAT,
     )
 
     print(f"Loaded artifact: {artifact_path}")
     print(f"Loaded weight type: {loaded_weight_type} (requested: {requested_weight_type})")
     print(f"Loaded ratio classifier: {ratio_classifier_path}")
-    print(f"Saved paired payload to: {output_path}")
-    print(f"Saved paired analysis to: {analysis_dir}")
+    print(f"Saved lineage-paired payload to: {output_path}")
+    print(f"Saved lineage-paired analysis to: {analysis_dir}")
     print(f"Pixel L2 mean: {metrics['pixel_l2_mean']:.6f}")
     print(f"Pixel L2 max: {metrics['pixel_l2_max']:.6f}")
     print(PAIRING_CAVEAT)
