@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_cmmd_eval
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=32GB]"
+#BSUB -M 32GB
+#BSUB -W 8:00
+#BSUB -o jobs/logs/cmmd_eval_%J.out
+#BSUB -e jobs/logs/cmmd_eval_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+UNGUIDED_SAMPLE_PATH="${UNGUIDED_SAMPLE_PATH:-runs/samples/best_model_samples_20260624_152103.pt}"
+GUIDED_SAMPLE_PATH="${GUIDED_SAMPLE_PATH:-runs/samples/inc_tds_final50k_start0p95_scale1p5_50k.pt}"
+OUTPUT_NAME="${OUTPUT_NAME:-late_guidance_train_cmmd}"
+NUM_SAMPLES="${NUM_SAMPLES:-10000}"
+REFERENCE_SPLIT="${REFERENCE_SPLIT:-train}"
+EMBEDDING_BATCH_SIZE="${EMBEDDING_BATCH_SIZE:-32}"
+KERNEL_BATCH_SIZE="${KERNEL_BATCH_SIZE:-1024}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/eval_cmmd.sh \
+  device=cuda \
+  cmmd.unguided_sample_path="$UNGUIDED_SAMPLE_PATH" \
+  cmmd.guided_sample_path="$GUIDED_SAMPLE_PATH" \
+  cmmd.output_name="$OUTPUT_NAME" \
+  cmmd.num_samples="$NUM_SAMPLES" \
+  cmmd.reference_split="$REFERENCE_SPLIT" \
+  cmmd.embedding_batch_size="$EMBEDDING_BATCH_SIZE" \
+  cmmd.kernel_batch_size="$KERNEL_BATCH_SIZE" \
+  $EXTRA_OVERRIDES

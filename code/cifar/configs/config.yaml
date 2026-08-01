@@ -15,6 +15,7 @@ defaults:
   - ratio: default
   - merge: default
   - paired: default
+  - cmmd: default
   - resume: none
   - _self_
 

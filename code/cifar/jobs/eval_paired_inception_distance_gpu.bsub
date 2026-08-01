@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#BSUB -q gpul40s
+#BSUB -J cifar_pair_inc_eval
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 16GB
+#BSUB -W 4:00
+#BSUB -o jobs/logs/paired_inception_eval_%J.out
+#BSUB -e jobs/logs/paired_inception_eval_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+SAMPLE_PATH="${SAMPLE_PATH:-null}"
+TOP_K="${TOP_K:-4}"
+EXTRA_OVERRIDES="${EXTRA_OVERRIDES:-}"
+
+bash jobs/eval_paired_inception_distance.sh \
+  device=cuda \
+  sampling.sample_path="$SAMPLE_PATH" \
+  paired.top_k="$TOP_K" \
+  $EXTRA_OVERRIDES
