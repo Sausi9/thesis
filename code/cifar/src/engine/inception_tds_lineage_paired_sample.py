@@ -139,8 +139,6 @@ def main(cfg: DictConfig) -> None:
 
     if str(cfg.jeffrey.feature) != "inception_ratio":
         raise ValueError("Lineage pairing requires jeffrey=inception_ratio.")
-    if str(cfg.sampling.backend) != "score_sde":
-        raise ValueError("Lineage pairing only supports sampling.backend=score_sde.")
 
     artifact_dir = project_root / str(cfg.training.artifacts_dir)
     artifact_path = (

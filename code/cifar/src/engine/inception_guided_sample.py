@@ -58,12 +58,6 @@ def main(cfg: DictConfig) -> None:
     device = resolve_device(str(cfg.device))
     torch.manual_seed(int(cfg.seed))
 
-    backend = str(OmegaConf.select(cfg, "sampling.backend", default="score_sde"))
-    if backend != "score_sde":
-        raise ValueError(
-            "inception_guided_sample is score-SDE only; "
-            f"got sampling.backend={backend!r}."
-        )
     if str(cfg.jeffrey.feature) != "inception_ratio":
         raise ValueError(
             "inception_guided_sample requires jeffrey=inception_ratio, "
@@ -202,4 +196,3 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     main()
-

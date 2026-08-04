@@ -132,13 +132,6 @@ def main(cfg: DictConfig) -> None:
     device = resolve_device(str(cfg.device))
     torch.manual_seed(int(cfg.seed))
 
-    backend = str(OmegaConf.select(cfg, "sampling.backend", default="score_sde"))
-    if backend != "score_sde":
-        raise ValueError(
-            "brightness_tds_sweep is score-SDE only; "
-            f"got sampling.backend={backend!r}."
-        )
-
     sweep_dir = make_sweep_dir(project_root, cfg)
     (sweep_dir / "previews").mkdir(parents=True, exist_ok=True)
 

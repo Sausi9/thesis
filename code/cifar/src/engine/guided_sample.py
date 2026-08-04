@@ -56,13 +56,6 @@ def main(cfg: DictConfig) -> None:
     device = resolve_device(str(cfg.device))
     torch.manual_seed(int(cfg.seed))
 
-    backend = str(OmegaConf.select(cfg, "sampling.backend", default="score_sde"))
-    if backend != "score_sde":
-        raise ValueError(
-            "guided_sample is score-SDE only; "
-            f"got sampling.backend={backend!r}."
-        )
-
     artifact_dir = project_root / str(cfg.training.artifacts_dir)
     if cfg.sampling.artifact_path is None:
         artifact_path = find_latest_artifact(

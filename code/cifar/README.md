@@ -195,9 +195,6 @@ Set the paired sample path in the second job only after the first job has
 completed. The paired outputs include pixel-distance and Inception-distance
 figures.
 
-An official DDIM checkpoint can also be sampled as an unconditional baseline
-with `jobs/ddim_sample_gpu.bsub`; guided DDIM sampling is not implemented.
-
 ## Outputs
 
 - `checkpoints/`: training checkpoints
