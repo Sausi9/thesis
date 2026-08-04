@@ -1,91 +1,124 @@
-# Bivariate
+# Bivariate Jeffrey Guidance
 
-Bivariate Gaussian toy example.
+Bivariate Gaussian experiments comparing exact Jeffrey sampling, importance
+resampling, naive score guidance, and the Twisted Diffusion Sampler (TDS).
 
-## Guidance Scale Sweep
+## Setup
 
-Naive guidance and TDS both expose `guidance_scale`. For TDS the scale multiplies
-the scheduled log twist, so it affects both proposal guidance and SMC weights.
-Scale `1` is the untempered Jeffrey potential; other scales define tempered
-potentials. The deprecated naive-guidance key `guidance_coeff` remains available
-as an alias.
+Run all commands from this directory:
 
-The unified two-stage experiment is configured in `configs/sweep/guidance.yaml`.
-It requires an explicit model artifact and unconditional sample payload produced
-by that same artifact.
+```bash
+cd code/bivariate
+uv sync --frozen
+```
 
-Run the calibration grid:
+Configuration uses Hydra. Override any setting with `group.key=value` on the
+command line. The main defaults are under `configs/`.
+
+## Basic Workflow
+
+Train the score model:
+
+```bash
+uv run python -m src.engine.train
+```
+
+Training writes checkpoints to `checkpoints/` and reusable model artifacts to
+`artifacts/models/`. Generate unconditional samples from a selected artifact:
+
+```bash
+uv run python -m src.engine.sample \
+  sampling.artifact_path=artifacts/models/MODEL_best.pt \
+  sampling.output_name=model_samples
+```
+
+Evaluate any saved sample payload:
+
+```bash
+uv run python -m src.engine.eval \
+  sampling.sample_path=runs/samples/model_samples.pt
+```
+
+## Jeffrey Sampling Methods
+
+Set the target marginal with `jeffrey.target.mean` and
+`jeffrey.target.variance`. The updated coordinate is selected with
+`jeffrey.updated_dim`.
+
+Analytic Jeffrey sampling:
+
+```bash
+uv run python -m src.engine.exact_jeffrey_sample \
+  jeffrey.target.mean=6.0 \
+  jeffrey.target.variance=0.25
+```
+
+Importance resampling from an unconditional sample payload:
+
+```bash
+uv run python -m src.engine.importance_resampling \
+  jeffrey.source_sample_path=runs/samples/model_samples.pt
+```
+
+Naive score guidance:
+
+```bash
+uv run python -m src.engine.guided_sample \
+  sampling.artifact_path=artifacts/models/MODEL_best.pt \
+  naive_guidance.guidance_scale=0.5 \
+  naive_guidance.guidance_start=0.6
+```
+
+TDS generation:
+
+```bash
+uv run python -m src.engine.tds_sample \
+  sampling.artifact_path=artifacts/models/MODEL_best.pt \
+  jeffrey.source_sample_path=runs/samples/model_samples.pt \
+  sampler.num_particles=256 \
+  sampler.guidance_scale=1.0 \
+  sampler.guidance_start=0.6
+```
+
+The source samples must come from the same model artifact used for guided
+sampling. They estimate the model-induced marginal required by the Jeffrey
+density ratio.
+
+## Guidance Sweep
+
+The two-stage naive-guidance and TDS sweep is configured in
+`configs/sweep/guidance.yaml`.
 
 ```bash
 uv run python -m src.engine.guidance_sweep \
   sampling.artifact_path=artifacts/models/MODEL_best.pt \
-  jeffrey.source_sample_path=runs/samples/MODEL_model_samples.pt \
+  jeffrey.source_sample_path=runs/samples/model_samples.pt \
   sweep.output_name=guidance_calibration
 ```
 
-Resume the same calibration output:
+After calibration, run confirmation using its result file:
 
 ```bash
 uv run python -m src.engine.guidance_sweep \
   sampling.artifact_path=artifacts/models/MODEL_best.pt \
-  jeffrey.source_sample_path=runs/samples/MODEL_model_samples.pt \
-  sweep.output_name=guidance_calibration \
-  sweep.resume=true
-```
-
-After calibration completes, automatically confirm the best scale/start for each
-method and target:
-
-```bash
-uv run python -m src.engine.guidance_sweep \
-  sampling.artifact_path=artifacts/models/MODEL_best.pt \
-  jeffrey.source_sample_path=runs/samples/MODEL_model_samples.pt \
+  jeffrey.source_sample_path=runs/samples/model_samples.pt \
   sweep.stage=confirmation \
   sweep.calibration_results_path=runs/sweeps/guidance/guidance_calibration/results.json \
   sweep.output_name=guidance_confirmation
 ```
 
-The LSF jobs are self-contained and require no exported shell variables. Review
-the settings blocks near the top of each file, then submit calibration and
-confirmation respectively:
+For DTU LSF, review the variables in the job files and submit with:
 
 ```bash
+bsub < jobs/tds_gpu.bsub
 bsub < jobs/guidance_sweep_gpu.bsub
 bsub < jobs/guidance_sweep_confirmation_gpu.bsub
 ```
 
-The committed defaults run only the mean-6 target with the matching local 20260504
-artifact/source pair. To resume either output, change its `RESUME` assignment to
-`true` without changing any other scientific setting. No job is submitted by the
-sweep Python command itself.
+## Outputs
 
-## TDS Resampling Sweep
-
-The fixed-size resampling comparison is defined in `experiments/tds_resampling_fixed.yaml`.
-It launches four jobs:
-
-- multinomial, always resample
-- multinomial, ESS-adaptive resampling
-- systematic, always resample
-- systematic, ESS-adaptive resampling
-
-Preview the cluster commands:
-
-```bash
-uv run python -m src.engine.submit_experiments --dry-run
-```
-
-Submit all four jobs:
-
-```bash
-uv run python -m src.engine.submit_experiments
-```
-
-Submit only selected variants:
-
-```bash
-uv run python -m src.engine.submit_experiments --only systematic_adaptive multinomial_always
-```
-
-Submitted runs are recorded in `runs/experiments/tds_resampling_fixed/manifest.csv`
-and `runs/experiments/tds_resampling_fixed/manifest.jsonl`.
+- `artifacts/models/`: final and best model artifacts
+- `checkpoints/`: resumable training checkpoints
+- `runs/samples/`: generated `.pt` payloads
+- `runs/evals/`: evaluation figures
+- `runs/sweeps/`: sweep metrics and plots
