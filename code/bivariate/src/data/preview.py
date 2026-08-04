@@ -119,7 +119,7 @@ def make_preview_figure(
         target_covariance,
         color="#111827",
         linestyle="-",
-        label="target" if sample_contours else None,
+        label="original" if sample_contours else None,
     )
     if sample_contours:
         if extra_contours is not None:
