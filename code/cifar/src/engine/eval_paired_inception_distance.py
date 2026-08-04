@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import os
 import tempfile
 from pathlib import Path
@@ -39,44 +38,40 @@ def _ranks(values: torch.Tensor) -> torch.Tensor:
     return ranks
 
 
-def save_side_by_side_pairs(
+def save_pair_grid(
     *,
     guided: torch.Tensor,
     unguided: torch.Tensor,
     distances: torch.Tensor,
     indices: torch.Tensor,
-    pairs_per_row: int,
     output_path: Path,
 ) -> None:
     count = int(indices.numel())
-    columns = 2 * min(int(pairs_per_row), count)
-    rows = math.ceil(count / int(pairs_per_row))
     fig, axes = plt.subplots(
-        rows,
-        columns,
-        figsize=(1.9 * columns, 2.4 * rows),
+        2,
+        count,
+        figsize=(2.35 * count, 4.8),
         squeeze=False,
         constrained_layout=True,
     )
-    for axis in axes.flat:
-        axis.axis("off")
 
     guided_display = display_space(guided[indices]).permute(0, 2, 3, 1).numpy()
     unguided_display = display_space(unguided[indices]).permute(0, 2, 3, 1).numpy()
-    for rank, pair_index in enumerate(indices.tolist()):
-        row = rank // int(pairs_per_row)
-        pair_column = rank % int(pairs_per_row)
-        left = axes[row, pair_column * 2]
-        right = axes[row, pair_column * 2 + 1]
-        left.imshow(unguided_display[rank])
-        right.imshow(guided_display[rank])
-        left.set_title(f"rank {rank + 1}\nunguided", fontsize=9)
-        right.set_title(
-            f"guided\nInception L2={float(distances[pair_index]):.3f}",
-            fontsize=9,
+    for column, pair_index in enumerate(indices.tolist()):
+        axes[0, column].imshow(unguided_display[column])
+        axes[1, column].imshow(guided_display[column])
+        axes[0, column].set_title(
+            f"rank {column + 1}, pair {pair_index}\n"
+            f"Inception L2={float(distances[pair_index]):.3f}",
+            fontsize=10,
         )
+        axes[0, column].axis("off")
+        axes[1, column].axis("off")
 
-    fig.savefig(output_path, dpi=220)
+    fig.text(0.005, 0.73, "unguided counterpart", rotation=90, va="center")
+    fig.text(0.005, 0.27, "guided TDS", rotation=90, va="center")
+
+    fig.savefig(output_path, dpi=200)
     plt.close(fig)
 
 
@@ -104,9 +99,6 @@ def main(cfg: DictConfig) -> None:
     top_k = int(cfg.paired.top_k)
     if top_k <= 0 or top_k > guided.shape[0]:
         raise ValueError("paired.top_k must be between 1 and the number of pairs.")
-    if int(cfg.paired.pairs_per_row) <= 0:
-        raise ValueError("paired.pairs_per_row must be positive.")
-
     extractor = build_inception_extractor(
         feature_extractor=str(cfg.ratio.feature_extractor),
         feature_layer=str(cfg.ratio.feature_layer),
@@ -137,12 +129,11 @@ def main(cfg: DictConfig) -> None:
 
     output_dir = resolve_path(project_root, str(cfg.paired.output_dir)) / sample_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
-    save_side_by_side_pairs(
+    save_pair_grid(
         guided=guided,
         unguided=unguided,
         distances=inception_l2,
         indices=top_indices,
-        pairs_per_row=int(cfg.paired.pairs_per_row),
         output_path=output_dir / f"top{top_k}_inception_l2_pairs.png",
     )
 
