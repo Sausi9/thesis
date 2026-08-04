@@ -3,5 +3,5 @@ output_name: null
 eval_dir: runs/evals
 sample_name_template: inc_tds_fid_start{start}_scale{scale}_10k
 guidance_starts: [0.9, 0.95, 0.98]
-guidance_scales: [0.25, 0.5, 1.0]
+guidance_scales: [0.25, 0.5, 1.0, 1.5, 2.0]
 unguided_fid: 11.51
