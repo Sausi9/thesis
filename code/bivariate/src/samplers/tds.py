@@ -19,6 +19,7 @@ class TDSSampler:
         updated_mean=None,
         updated_covariance=None,
         resample_type=None,
+        guidance_scale=1.0,
         guidance_ramp=None,
         guidance_start=0.0,
         adaptive_resampling=False,
@@ -71,6 +72,7 @@ class TDSSampler:
             if missing:
                 raise ValueError(f"Optimal twist requires: {', '.join(missing)}")
         self.resample_type = resample_type
+        self.guidance_scale = float(guidance_scale)
         self.guidance_ramp = guidance_ramp
         if guidance_start is None:
             raise ValueError("guidance_start must be set.")
@@ -258,10 +260,14 @@ class TDSSampler:
 
     def log_twist(self, score, x_t, t):
         if self.twist_type == "tractable":
-            return self.log_tractable_twist(score, x_t, t)
-        if self.twist_type == "optimal":
-            return self.log_optimal_twist(x_t, t)
-        raise ValueError(f"Unsupported twist type {self.twist_type}")
+            base_log_twist = self.log_tractable_twist(score, x_t, t)
+        elif self.twist_type == "optimal":
+            base_log_twist = self.log_optimal_twist(x_t, t)
+        else:
+            raise ValueError(f"Unsupported twist type {self.twist_type}")
+
+        strength = self.guidance_strength(t).to(dtype=base_log_twist.dtype)
+        return self.guidance_scale * strength * base_log_twist
 
     # returns log of p^*(y)/p(y) i.e. rho(y) in Jeffrey note. Using log allows for subtracting instead of dividing.
     def log_tractable_twist(self, score, x_t, t):
@@ -300,7 +306,7 @@ class TDSSampler:
         base_log_twist = -0.5 * (
             a * y_hat.square() + b * y_hat + c + torch.log(var_target / var_original)
         )
-        return self.guidance_strength(t).to(dtype=base_log_twist.dtype) * base_log_twist
+        return base_log_twist
 
     # this function uses the exact/optimal twist, analogous to the optimal twist in TDS paper. It is not generally tractable, however in this bivariate toy example it is. Used as a baseline to compare the differences between the twists.
     def log_optimal_twist(self, x_t, t_batch):

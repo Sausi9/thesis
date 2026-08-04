@@ -1,2 +1,4 @@
-guidance_coeff: 0.55
+guidance_scale: 0.55
+# Deprecated alias. When set, this takes precedence over guidance_scale.
+guidance_coeff: null
 guidance_start: 0.5

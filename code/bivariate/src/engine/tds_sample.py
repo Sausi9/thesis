@@ -1,4 +1,3 @@
-from matplotlib.pylab import mean
 from pathlib import Path
 
 import torch
@@ -33,6 +32,7 @@ def load_samples(sample_path):
 
 def make_run_label(
     twist_type: str,
+    guidance_scale: float,
     guidance_ramp: str | None,
     guidance_start: float,
     resample_type: str,
@@ -45,7 +45,11 @@ def make_run_label(
     threshold = f"_ess{ess_threshold:g}" if adaptive_resampling else ""
     ramp = "" if guidance_ramp is None else f"_{guidance_ramp}-ramp"
     guidance_start = 0.0 if guidance_start is None else guidance_start
-    return f"{twist_type}{ramp}_guidance_start_{guidance_start}_{resample_type}_{mode}{threshold}_K{num_particles}_T{num_steps}"
+    return (
+        f"{twist_type}_scale{guidance_scale:g}{ramp}_"
+        f"guidance_start_{guidance_start}_{resample_type}_{mode}{threshold}_"
+        f"K{num_particles}_T{num_steps}"
+    )
 
 
 def make_output_path(cfg: DictConfig, project_root: Path, run_name: str, run_label: str) -> Path:
@@ -85,7 +89,11 @@ def main(cfg: DictConfig):
     updated_dim = cfg.jeffrey.updated_dim
 
     target_marginal = build_target_marginal(cfg.jeffrey.target)
-    samples = load_samples(cfg.jeffrey.source_sample_path)
+    source_sample_path = resolve_path(
+        project_root,
+        str(cfg.jeffrey.source_sample_path),
+    )
+    samples = load_samples(source_sample_path)
     # "original marginal" is the model induced marginal here, not the exact original marginal. TDS does this in the paper
     original_marginal = estimate_model_marginal(samples, updated_dim)
 
@@ -104,6 +112,7 @@ def main(cfg: DictConfig):
     )
 
     twist_type = str(cfg.sampler.twist_type)
+    guidance_scale = float(cfg.sampler.guidance_scale)
     guidance_ramp = cfg.sampler.guidance_ramp
     guidance_start = cfg.sampler.guidance_start
     resample_type = str(cfg.sampler.resample_type)
@@ -114,6 +123,7 @@ def main(cfg: DictConfig):
     num_steps = int(cfg.sampling.num_steps)
     run_label = make_run_label(
         twist_type,
+        guidance_scale,
         guidance_ramp,
         guidance_start,
         resample_type,
@@ -142,6 +152,7 @@ def main(cfg: DictConfig):
             updated_mean=updated_mean,
             updated_covariance=updated_covariance,
             resample_type=resample_type,
+            guidance_scale=guidance_scale,
             guidance_ramp=guidance_ramp,
             guidance_start = guidance_start,
             adaptive_resampling=adaptive_resampling,
@@ -160,6 +171,7 @@ def main(cfg: DictConfig):
         "sample_type": "tds",
         "run_label": run_label,
         "twist_type": twist_type,
+        "guidance_scale": guidance_scale,
         "guidance_ramp": guidance_ramp,
         "guidance_start": guidance_start,
         "resample_type": resample_type,
@@ -170,12 +182,19 @@ def main(cfg: DictConfig):
         "num_steps": num_steps,
         "seed": int(cfg.seed),
         "artifact_path": str(artifact_path),
+        "source_sample_path": str(source_sample_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,
         "target_marginal": {
             "type": "gaussian",
             "mean": target_marginal.mean,
             "variance": target_marginal.variance,
+        },
+        "original_marginal": {
+            "type": "gaussian",
+            "source": "model_samples",
+            "mean": float(original_marginal.mean),
+            "variance": float(original_marginal.variance),
         },
         "updated_mean": updated_mean,
         "updated_covariance": updated_covariance,

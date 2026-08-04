@@ -1,6 +1,7 @@
 name: tds
 num_particles: 10
 twist_type: tractable
+guidance_scale: 1.0
 guidance_ramp: null
 guidance_start: 0.5
 resample_type: systematic

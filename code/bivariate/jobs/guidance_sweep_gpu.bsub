@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#BSUB -q gpua100
+#BSUB -J bivariate_mean6_calibration
+#BSUB -n 4
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 16GB
+#BSUB -W 24:00
+#BSUB -o jobs/logs/mean6_guidance_calibration_%J.out
+#BSUB -e jobs/logs/mean6_guidance_calibration_%J.err
+#BSUB -u s242762@dtu.dk
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+cd "$LS_SUBCWD"
+mkdir -p jobs/logs
+
+# Experiment settings. Edit this block before submission if a different matching
+# model/source pair or output identity is required.
+ARTIFACT_PATH="artifacts/models/bivariate_gaussian_20260504_122838_best.pt"
+SOURCE_SAMPLE_PATH="runs/samples/bivariate_gaussian_20260504_122838_model_samples_20260504_134847.pt"
+OUTPUT_NAME="mean6_guidance_calibration"
+RESUME="false"
+
+bash jobs/guidance_sweep.sh \
+  device=cuda \
+  sweep.stage=calibration \
+  sweep.output_name="$OUTPUT_NAME" \
+  sweep.resume="$RESUME" \
+  sweep.calibration_results_path=null \
+  'sweep.methods=[naive_guidance,tds]' \
+  'sweep.target_means=[6.0]' \
+  sweep.target_variance=0.25 \
+  'sweep.guidance_scales=[0.25,0.5,0.75,1.0,1.5,2.0]' \
+  'sweep.guidance_starts=[0.4,0.5,0.6,0.7]' \
+  sweep.num_steps=1000 \
+  sweep.batch_size=500 \
+  sweep.calibration.num_samples_per_setting=1000 \
+  sweep.calibration.num_particles=256 \
+  sweep.calibration.seed=67 \
+  sweep.confirmation.num_samples_per_setting=12000 \
+  sweep.confirmation.num_particles=2048 \
+  sweep.confirmation.seed=68 \
+  sweep.naive.schedule=delayed_discrete \
+  sweep.tds.twist_type=tractable \
+  sweep.tds.guidance_ramp=delayed_linear \
+  sweep.tds.resample_type=systematic \
+  sweep.tds.adaptive_resampling=true \
+  sweep.tds.ess_threshold=0.5 \
+  sweep.tds.max_guidance_grad_norm=100.0 \
+  sampling.artifact_path="$ARTIFACT_PATH" \
+  jeffrey.source_sample_path="$SOURCE_SAMPLE_PATH" \
+  sampling.progress=true

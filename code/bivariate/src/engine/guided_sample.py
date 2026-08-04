@@ -5,7 +5,10 @@ import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
-from src.samplers.reverse_guided import GuidedReverseSDESampler
+from src.samplers.reverse_guided import (
+    GuidedReverseSDESampler,
+    resolve_guidance_scale,
+)
 from src.distributions.targets import build_target_marginal
 from src.jeffrey.update import jeffrey_updated_gaussian_params
 from src.utils import (
@@ -17,11 +20,23 @@ from src.utils import (
 )
 
 
-def make_output_path(cfg: DictConfig, project_root: Path, run_name: str) -> Path:
+def make_run_label(guidance_scale: float, guidance_start: float, num_steps: int) -> str:
+    return (
+        f"scale{guidance_scale:g}_guidance_start_{guidance_start:g}_"
+        f"T{num_steps}"
+    )
+
+
+def make_output_path(
+    cfg: DictConfig,
+    project_root: Path,
+    run_name: str,
+    run_label: str,
+) -> Path:
     return timestamped_output_path(
         output_dir=resolve_path(project_root, str(cfg.sampling.output_dir)),
         output_name=cfg.sampling.output_name,
-        default_stem=f"{run_name}_naive_guidance_samples",
+        default_stem=f"{run_name}_naive_guidance_samples_{run_label}",
         extension=".pt",
     )
 
@@ -63,8 +78,12 @@ def main(cfg: DictConfig) -> None:
     original_var = cfg.dataset.covariance[updated_dim][updated_dim]
     original_marginal = torch.distributions.Normal(original_mean, original_var ** 0.5)
 
-    guidance_coeff = float(cfg.naive_guidance.guidance_coeff)
+    guidance_scale = resolve_guidance_scale(
+        cfg.naive_guidance.guidance_scale,
+        cfg.naive_guidance.guidance_coeff,
+    )
     guidance_start = float(cfg.naive_guidance.guidance_start)
+    num_steps = int(cfg.sampling.num_steps)
 
     sampler = GuidedReverseSDESampler(
         sde,
@@ -73,18 +92,23 @@ def main(cfg: DictConfig) -> None:
         dim,
         updated_dim,
         num_samples,
-        guidance_coeff=guidance_coeff,
+        guidance_scale=guidance_scale,
         guidance_start=guidance_start,
     )
 
-    samples = sampler.sample(model, cfg.sampling.num_steps, device, True, True)
+    samples = sampler.sample(model, num_steps, device, True, True)
     run_name = str(payload.get("run_name") or artifact_path.stem)
-    output_path = make_output_path(cfg, project_root, run_name)
+    run_label = make_run_label(guidance_scale, guidance_start, num_steps)
+    output_path = make_output_path(cfg, project_root, run_name, run_label)
     result = {
         "samples": samples.detach().cpu(),
         "sample_type": "naive_guidance",
-        "guidance_coeff": guidance_coeff,
+        "run_label": run_label,
+        "guidance_scale": guidance_scale,
+        "guidance_coeff": guidance_scale,
+        "guidance_schedule": "delayed_discrete",
         "guidance_start": guidance_start,
+        "num_steps": num_steps,
         "artifact_path": str(artifact_path),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "updated_dim": updated_dim,
@@ -92,6 +116,12 @@ def main(cfg: DictConfig) -> None:
             "type": "gaussian",
             "mean": target_marginal.mean,
             "variance": target_marginal.variance,
+        },
+        "original_marginal": {
+            "type": "gaussian",
+            "source": "analytic_dataset",
+            "mean": float(original_marginal.mean),
+            "variance": float(original_marginal.variance),
         },
         "updated_mean": updated_mean,
         "updated_covariance": updated_covariance,
